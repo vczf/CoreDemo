@@ -68,12 +68,9 @@ int init_compile_systemcall_map(){
 	//编译指令限制
 	CP_SELECT[0]=CP_C;
 	CP_SELECT[1]=CP_CC;
-
-
 	//系统调用限制
 	SL_SELECT_V[0]=LANG_C;
 	SL_SELECT_C[0]=LANG_CC;
-
 	SL_SELECT_V[1]=LANG_C;
 	SL_SELECT_C[1]=LANG_CC;
 	//G++跟GCC是一样的
@@ -84,11 +81,9 @@ void set_compile_info(){
 	LIM.rlim_max = COMPILE_TIME;
 	LIM.rlim_cur = COMPILE_TIME;
 	setrlimit(RLIMIT_CPU,&LIM);
-
 	LIM.rlim_max = COMPILE_FSIZE;
 	LIM.rlim_cur = COMPILE_FSIZE;
 	setrlimit(RLIMIT_FSIZE,&LIM);
-
 	LIM.rlim_max = COMPILE_MSIZE;
 	LIM.rlim_cur = COMPILE_MSIZE;
 	setrlimit(RLIMIT_AS,&LIM);
@@ -124,12 +119,18 @@ void set_run_info(int lang){
 	freopen("error.txt","a+",stderr);
 	ptrace(PTRACE_TRACEME, 0, NULL, NULL);
 	//偷窥我
-	
-
-	
 }
 
-
+struct proc_info{
+	pid_t pid;//进程pid
+	int problem_id;//题目数
+	int time;//所耗时间单位毫秒
+	int memory;//所耗内存单位kb
+	int outputsize;//输出文件大小
+	int lang;//语言
+	char outfile[BUFFER_SIZE];//输出文件路径
+	 
+};
 int compile(int lang ){
 	int pid;
 	pid = fork();
@@ -146,7 +147,6 @@ int compile(int lang ){
 		//父进程
 		int status = 0;
 		waitpid(pid,&status,0);
-		printf("%d:%d\n",pid,status);
 		return status;
 	}
 }
