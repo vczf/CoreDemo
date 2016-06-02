@@ -1,4 +1,6 @@
 #include <unistd.h>
+#include <string.h>
+#include <sys/user.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <stdlib.h>
@@ -11,6 +13,7 @@
 #include <sys/wait.h>
 #include "okcalls.h"
 #include <fcntl.h>
+#include <algorithm>
 #define STD_MB 1048576
 #define STD_T_LIM 2
 #define STD_F_LIM (STD_MB<<5)
@@ -31,6 +34,12 @@
 #define OJ_CE 11
 #define OJ_CO 12
 #define OJ_TR 13
+#define OJ_RE_SO 14
+//StackOverFLOW
+#define OJ_DBZ 15
+//DIVIDE_BY_ZERO
+#define OJ_AV 16
+//ACCESS_VIOLATION
 
 #ifdef __i386
 #define REG_SYSCALL orig_eax
@@ -50,7 +59,7 @@ https://github.com/zhblue/hustoj/blob/master/beta/core/judge_client/judge_client
 //编译限制 通过读配置文件得到
 //暂时写死
 int COMPILE_TIME=60;//秒
-int COMPILE_FSIZE=65535;//字节
+int COMPILE_FSIZE=128*STD_MB;//字节
 int COMPILE_MSIZE=64*STD_MB;//使用内存 单位字节
 
 int Debug=0;
@@ -73,6 +82,13 @@ const char * CP_C[] = { "gcc", "Main.c", "-o", "Main", "-O2","-Wall", "-lm",
 		               "--static", "-std=c99", "-DONLINE_JUDGE", NULL};
 const char * CP_CC[] = { "g++", "Main.cc", "-o", "Main","-O2", "-Wall",
 			            "-lm", "--static", "-DONLINE_JUDGE", NULL};
+long get_file_size(const char * filename){
+    struct stat f_stat;
+	if (stat(filename, &f_stat) == -1)
+        return 0;
+    return (long) f_stat.st_size;
+
+}
 struct proc_info{
 	pid_t pid;//进程pid
 	int problem_id;//题目数
@@ -91,6 +107,17 @@ struct proc_info{
 	int pipe_fd;
 	int client_id;
 	FILE *fp;
+	int real_time;//所耗时间单位毫秒
+	int real_memory;//所耗内存单位kb
+	void debug_show_real_info(){
+		printf("time:%d\nmemory:%d\n",real_time,real_memory);
+		printf("result:%d\n",acflag);
+
+	}
+	void init_real_info(){
+		real_time=real_memory=0;
+		acflag=OJ_AC;
+	}
 	void init_client_info(char **info){
 		int i;
 		sscanf(info[0],"%s",oj_home);
@@ -98,6 +125,7 @@ struct proc_info{
 		sscanf(info[2],"%s",pipe_dir);
 		sscanf(info[3],"%d",&client_id);
 		fp=NULL;
+		chdir(work_dir);
 		pipe_fd=open(pipe_dir,O_RDONLY|O_NONBLOCK);
 	}
 	bool init_problem_info(char *buff){
@@ -106,6 +134,7 @@ struct proc_info{
 		rs = sscanf(buff,"%d%d%d%d%d",&runid,&problem_id,&time,&memory,&lang);
 		sprintf(data_in,"%sdata/%d/data.in",oj_home,problem_id);
 		sprintf(data_out,"%sdata/%d/data.out",oj_home,problem_id);
+		outputsize=get_file_size(data_out);
 		return rs==5;
 	}
 	void Debug_ShowInfo(){
@@ -125,12 +154,6 @@ struct proc_info{
 		fclose(fp);
 		fp=NULL;
 
-		/*		
-		printf("OJ_HOME:%s\n",oj_home);
-		printf("work_dir:%s\n",work_dir);
-		printf("pipe_dir:%s\n",pipe_dir);
-		printf("runid:%d\nproblem:%d\ntime:%d\nmemory:%d\nlang:%d\n",runid,problem_id,time,memory,lang);
-		*/
 	}
 	void get_solution_info(){
 		printf("son:stop\n");
@@ -141,6 +164,7 @@ struct proc_info{
 		assert(pipe_fd!=-1);
 		int len = read(pipe_fd,buff,sizeof(buff)-1);
 		buff[len]=0;
+		init_real_info();
 		if(init_problem_info(buff)){
 			printf("读取成功\n");
 			Debug_ShowInfo();
@@ -148,10 +172,43 @@ struct proc_info{
 		else{
 			printf("读取失败!\n");
 			exit(0);
-			
 		}
 	}
+	bool judge_memory(){
+		if(memory<real_memory){
+			acflag = OJ_ML;
+			real_memory=memory;
+			kill_proc();
+			return true;
+		}
+		return false;
+	}
+	bool judge_time(){
+		if(time<real_time){
+			acflag=OJ_TL;
+			real_time=time;
+			kill_proc();
+			return true;
+		}
+		return false;
+		
+	}
+	bool judge_outputsize(){
+		if(get_file_size("error.out")){
+			acflag=OJ_RE;
+			kill_proc();
+			return true;
+		} 
+		if(get_file_size("user.out")>outputsize*2){
+			acflag=OJ_OL;
+			kill_proc();
+			return true;
+		}
 
+		return false;
+
+	}
+	void kill_proc(){ptrace(PTRACE_KILL,pid,NULL,NULL);	}
 };
 
 int init_compile_systemcall_map(){
@@ -165,16 +222,25 @@ int init_compile_systemcall_map(){
 	SL_SELECT_C[1]=LANG_CC;
 	//G++跟GCC是一样的
 }
+int init_systemcall_count(int lang){
+	int i,j,k;
+	memset(system_calls_count,0,sizeof(system_calls_count));
+	for(i = 0 ; SL_SELECT_C[lang][i];++i){
+		system_calls_count[SL_SELECT_V[lang][i]]=SL_SELECT_C[lang][i];
+		printf("system:%d=%d\n",SL_SELECT_V[lang][i],SL_SELECT_C[lang][i]);
+	} 
+}
+ 
 
 void set_compile_info(){
 	struct rlimit LIM;
-	LIM.rlim_max = COMPILE_TIME;
+	LIM.rlim_max = COMPILE_TIME*2;
 	LIM.rlim_cur = COMPILE_TIME;
 	setrlimit(RLIMIT_CPU,&LIM);
-	LIM.rlim_max = COMPILE_FSIZE;
+	LIM.rlim_max = COMPILE_FSIZE*2;
 	LIM.rlim_cur = COMPILE_FSIZE;
 	setrlimit(RLIMIT_FSIZE,&LIM);
-	LIM.rlim_max = COMPILE_MSIZE;
+	LIM.rlim_max = COMPILE_MSIZE*2;
 	LIM.rlim_cur = COMPILE_MSIZE;
 	setrlimit(RLIMIT_AS,&LIM);
 }
@@ -184,22 +250,23 @@ void set_run_info(proc_info &info){
 	RUN_TIME=info.time;
 	RUN_FSIZE=info.outputsize;
 	RUN_MSIZE=info.memory;
-	LIM.rlim_max = RUN_TIME;
-	LIM.rlim_cur = RUN_TIME;
+	alarm(0);
+	alarm(info.time/1000+1);
+	printf("time:%d\n",info.time/1000+11);
+	LIM.rlim_max = RUN_TIME/1000+1;
+	LIM.rlim_cur = RUN_TIME/1000+1;
 	setrlimit(RLIMIT_CPU,&LIM);
 	//时间
-	LIM.rlim_max = RUN_FSIZE*2;
-	LIM.rlim_cur = RUN_FSIZE*3/2;
+	LIM.rlim_max = STD_F_LIM+STD_MB;
+	LIM.rlim_cur = STD_F_LIM;
 	setrlimit(RLIMIT_FSIZE,&LIM);
 	//文件大小
-	LIM.rlim_max = LIM.rlim_cur = 0;
-	setrlimit(RLIMIT_NOFILE,&LIM);
-	LIM.rlim_max = RUN_MSIZE*2;
-	LIM.rlim_cur = RUN_MSIZE;
+	LIM.rlim_max = (STD_MB<<6)+RUN_MSIZE;
+	LIM.rlim_cur = STD_MB<<6;
 	setrlimit(RLIMIT_AS,&LIM);
 	//内存使用大小
-	LIM.rlim_max = 64*STD_MB;
-	LIM.rlim_cur = 64*STD_MB;
+	LIM.rlim_max = STD_MB<<6;
+	LIM.rlim_cur = STD_MB<<6;
 	setrlimit(RLIMIT_STACK,&LIM);
 	//堆栈大小
 	LIM.rlim_max = 1;
@@ -214,7 +281,7 @@ int compile(int lang ){
 	pid = fork();
 	if(pid==0){
 		//子进程
-		alarm(10);
+		alarm(5);
 		//限制10秒编译时间
 		//编译超时会发信号
 		set_compile_info();
@@ -228,52 +295,172 @@ int compile(int lang ){
 		return status;
 	}
 }
-
-int run_solution(proc_info info){
+int get_proc_status(int pid, const char * mark) {
+	    FILE * pf;
+	    char fn[BUFFER_SIZE], buf[BUFFER_SIZE];
+	    int ret = 0;
+	    sprintf(fn, "/proc/%d/status", pid);
+	    pf = fopen(fn, "r");
+	    int m = strlen(mark);
+	    while (pf && fgets(buf, BUFFER_SIZE - 1, pf)){
+	        buf[strlen(buf) - 1] = 0;
+	        if (strncmp(buf, mark, m) == 0)
+	            sscanf(buf + m + 1, "%d", &ret);
+		}
+	    if (pf)
+	        fclose(pf);
+	    return ret;
+}
+int run_solution(proc_info &info){
 	int lang = info.lang;
-	set_run_info(info);
 	///////初期我只打算做c++跟c，所以后面的活你们加油！
-	//chdir(work_dir);
-	freopen("data.in","r",stdin);
-	freopen("user.out","w",stdout);
-	freopen("error.txt","a+",stderr);
+	chdir(info.work_dir);
+	printf("data_in:%s\n",info.data_in);
+   
+	freopen(info.data_in,"r",stdin);
+	freopen("./user.out","w",stdout);
+	freopen("./error.out","a+",stderr);
+	chmod("./user.out",777);
+	chmod("./error.out",777);
+	chroot(info.work_dir);
+	nice(19);
+	
+	int tmp;
+	while(tmp = setgid(2333),tmp!=0)sleep(1);
+	while(tmp = setuid(2333),tmp!=0)sleep(1);
+	while(tmp = setresuid(2333,2333,2333),tmp!=0) sleep(1);
+	set_run_info(info);
+
 	ptrace(PTRACE_TRACEME, 0, NULL, NULL);
 	if(lang<2)
 		execl("./Main",(char *)NULL );
 	exit(0);
 	//后面多余，根本不会运行到这里
 }
-int watch_solution(pid_t pid){
-
+int watch_solution(proc_info &std){
+	int i,j,k;
+	struct user_regs_struct reg;
+	struct rusage ruse;
+	int status,exitcode;
+	std.real_time=0;
+	while(1){
+		wait4(std.pid,&status,0,&ruse);
+		std.real_memory=std::max(std.real_memory,get_proc_status(std.pid,"VmPeak:"));
+		std.real_time= (ruse.ru_utime.tv_sec * 1000 + ruse.ru_utime.tv_usec / 1000);
+		std.real_time += (ruse.ru_stime.tv_sec * 1000 + ruse.ru_stime.tv_usec / 1000);
+		if(std.judge_memory())break;
+		if(std.judge_time())break;
+		if(WIFEXITED(status)) break;
+		if(std.judge_outputsize())break;
+		printf("这里1\n");
+		if(std.acflag!=OJ_AC){std.kill_proc();break;}
+		printf("这里2\n");
+		exitcode = WEXITSTATUS(status);
+		if(exitcode==0x05||exitcode==0);
+		else{
+			switch (exitcode){
+		        case SIGCHLD:
+			    case SIGALRM:
+			    alarm(0);
+			    case SIGKILL:
+			    case SIGXCPU:
+			    std.acflag = OJ_TL;
+			    break;
+			    case SIGXFSZ:
+			    std.acflag= OJ_OL;
+			    break;
+				case SIGFPE:
+				std.acflag=OJ_DBZ;
+				break;
+				case SIGILL:
+				std.acflag=OJ_RE_SO;
+				break;
+				case SIGSEGV:
+				std.acflag=OJ_AV;
+				break;
+			    default:
+			    std.acflag = OJ_RE;
+			}
+			std.kill_proc();
+			break;
+		}
+	    if (WIFSIGNALED(status)){
+			int sig = WTERMSIG(status);
+			printf("sig:%d\n",sig);
+		    switch (sig){
+		        case SIGCHLD:
+			    case SIGALRM:
+			    alarm(0);
+			    case SIGKILL:
+			    case SIGXCPU:
+			    std.acflag = OJ_TL;
+			    break;
+			    case SIGXFSZ:
+			    std.acflag= OJ_OL;
+			    break;
+				case SIGFPE:
+				std.acflag=OJ_DBZ;
+				break;
+				case SIGILL:
+				std.acflag=OJ_RE_SO;
+				break;
+				case SIGSEGV:
+				std.acflag=OJ_AV;
+				break;
+			    default:
+			    std.acflag = OJ_RE;
+			}
+			std.kill_proc();
+			break;
+		}
+		ptrace(PTRACE_GETREGS,std.pid,NULL,&reg);
+		printf("systemcall:%d\n",reg.REG_SYSCALL);
+		printf("count:%d\n",system_calls_count[reg.REG_SYSCALL]);
+		if(reg.REG_SYSCALL>0&&system_calls_count[reg.REG_SYSCALL]==0){
+			std.acflag=OJ_RE;
+			std.kill_proc();
+		}
+		else if (system_calls_count[reg.REG_SYSCALL]>0)
+			system_calls_count[reg.REG_SYSCALL]--;
+		ptrace(PTRACE_SYSCALL,std.pid,NULL,NULL);
+	}
 }
 int judge_solution(){}
+int get_solution(proc_info &std){
+	;
+}
 
 int main(int argc , char ** argv){
 	int compile_ok;
 	int i;
-	for(i=0;i<argc;++i)
-		printf("son:%s\n",argv[i]);
 	proc_info std;
 	std.init_client_info(argv);
+	init_compile_systemcall_map();
 	while(1){
 		std.get_solution_info();
-		sleep(rand()%5);
-	}
-	pid_t p_id;
-	init_compile_systemcall_map();
-	compile_ok = compile(0);
-	if(!compile_ok){
-		//运行代码
-		p_id = fork();
-		if(p_id==0)
-			run_solution(std);
-		else{
-			watch_solution(p_id);
-			judge_solution();
+		init_systemcall_count(std.pid);
+		pid_t p_id;
+		get_solution(std);
+		compile_ok = compile(std.lang);
+		printf("编译结束\n");
+		if(!compile_ok){
+			printf("运行\n");
+			//运行代码
+			p_id = fork();
+			if(p_id==0)
+				run_solution(std);
+			else{
+				std.pid=p_id;
+				watch_solution(std);
+				std.debug_show_real_info();
+				judge_solution();
+			}
 		}
+		else{
+			//输出ce信息到数据库
+			printf("编译错误\n");
+		}
+		return 0;
 	}
-	else{
-		//输出ce信息到数据库
-	}
-	return 0;
+		return 0;
 }
