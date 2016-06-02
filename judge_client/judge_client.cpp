@@ -8,6 +8,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <assert.h>
+#include <ctype.h>
 #include <sys/resource.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
@@ -103,6 +104,7 @@ struct proc_info{
 	char oj_home[BUFFER_SIZE];
 	char data_in[BUFFER_SIZE];
 	char data_out[BUFFER_SIZE];
+	char user_out[BUFFER_SIZE];
 	char buff[BUFFER_SIZE];
 	int pipe_fd;
 	int client_id;
@@ -134,6 +136,7 @@ struct proc_info{
 		rs = sscanf(buff,"%d%d%d%d%d",&runid,&problem_id,&time,&memory,&lang);
 		sprintf(data_in,"%sdata/%d/data.in",oj_home,problem_id);
 		sprintf(data_out,"%sdata/%d/data.out",oj_home,problem_id);
+		sprintf(user_out,"%suser.out",work_dir);
 		outputsize=get_file_size(data_out);
 		return rs==5;
 	}
@@ -178,7 +181,6 @@ struct proc_info{
 		if(memory<real_memory){
 			acflag = OJ_ML;
 			real_memory=memory;
-			kill_proc();
 			return true;
 		}
 		return false;
@@ -187,7 +189,6 @@ struct proc_info{
 		if(time<real_time){
 			acflag=OJ_TL;
 			real_time=time;
-			kill_proc();
 			return true;
 		}
 		return false;
@@ -196,12 +197,10 @@ struct proc_info{
 	bool judge_outputsize(){
 		if(get_file_size("error.out")){
 			acflag=OJ_RE;
-			kill_proc();
 			return true;
 		} 
 		if(get_file_size("user.out")>outputsize*2){
 			acflag=OJ_OL;
-			kill_proc();
 			return true;
 		}
 
@@ -210,7 +209,6 @@ struct proc_info{
 	}
 	void kill_proc(){ptrace(PTRACE_KILL,pid,NULL,NULL);	}
 };
-
 int init_compile_systemcall_map(){
 	//编译指令限制
 	CP_SELECT[0]=CP_C;
@@ -222,15 +220,35 @@ int init_compile_systemcall_map(){
 	SL_SELECT_C[1]=LANG_CC;
 	//G++跟GCC是一样的
 }
-int init_systemcall_count(int lang){
+void init_systemcall_count(int lang){
 	int i,j,k;
 	memset(system_calls_count,0,sizeof(system_calls_count));
 	for(i = 0 ; SL_SELECT_C[lang][i];++i){
 		system_calls_count[SL_SELECT_V[lang][i]]=SL_SELECT_C[lang][i];
-		printf("system:%d=%d\n",SL_SELECT_V[lang][i],SL_SELECT_C[lang][i]);
 	} 
+
 }
- 
+int get_flag(int t){
+	switch (t){
+        case SIGCHLD:
+	    case SIGALRM:
+	    alarm(0);
+	    case SIGKILL:
+	    case SIGXCPU:
+	    return OJ_TL;
+	    case SIGXFSZ:
+	    return OJ_OL;
+		case SIGFPE:
+		return OJ_DBZ;
+		break;
+		case SIGILL:
+		return OJ_RE_SO;
+		case SIGSEGV:
+		return OJ_AV;
+	    default:
+	    return OJ_RE;
+	}
+} 
 
 void set_compile_info(){
 	struct rlimit LIM;
@@ -335,7 +353,6 @@ int run_solution(proc_info &info){
 	if(lang<2)
 		execl("./Main",(char *)NULL );
 	exit(0);
-	//后面多余，根本不会运行到这里
 }
 int watch_solution(proc_info &std){
 	int i,j,k;
@@ -348,74 +365,25 @@ int watch_solution(proc_info &std){
 		std.real_memory=std::max(std.real_memory,get_proc_status(std.pid,"VmPeak:"));
 		std.real_time= (ruse.ru_utime.tv_sec * 1000 + ruse.ru_utime.tv_usec / 1000);
 		std.real_time += (ruse.ru_stime.tv_sec * 1000 + ruse.ru_stime.tv_usec / 1000);
-		if(std.judge_memory())break;
-		if(std.judge_time())break;
+		if(std.judge_memory()){std.kill_proc(); break;}
+		if(std.judge_time()){std.kill_proc(); break;}
+		if(std.judge_outputsize()){std.kill_proc(); break;}		
 		if(WIFEXITED(status)) break;
-		if(std.judge_outputsize())break;
-		printf("这里1\n");
 		if(std.acflag!=OJ_AC){std.kill_proc();break;}
-		printf("这里2\n");
 		exitcode = WEXITSTATUS(status);
 		if(exitcode==0x05||exitcode==0);
 		else{
-			switch (exitcode){
-		        case SIGCHLD:
-			    case SIGALRM:
-			    alarm(0);
-			    case SIGKILL:
-			    case SIGXCPU:
-			    std.acflag = OJ_TL;
-			    break;
-			    case SIGXFSZ:
-			    std.acflag= OJ_OL;
-			    break;
-				case SIGFPE:
-				std.acflag=OJ_DBZ;
-				break;
-				case SIGILL:
-				std.acflag=OJ_RE_SO;
-				break;
-				case SIGSEGV:
-				std.acflag=OJ_AV;
-				break;
-			    default:
-			    std.acflag = OJ_RE;
-			}
+			std.acflag = get_flag(exitcode);
 			std.kill_proc();
 			break;
 		}
 	    if (WIFSIGNALED(status)){
 			int sig = WTERMSIG(status);
-			printf("sig:%d\n",sig);
-		    switch (sig){
-		        case SIGCHLD:
-			    case SIGALRM:
-			    alarm(0);
-			    case SIGKILL:
-			    case SIGXCPU:
-			    std.acflag = OJ_TL;
-			    break;
-			    case SIGXFSZ:
-			    std.acflag= OJ_OL;
-			    break;
-				case SIGFPE:
-				std.acflag=OJ_DBZ;
-				break;
-				case SIGILL:
-				std.acflag=OJ_RE_SO;
-				break;
-				case SIGSEGV:
-				std.acflag=OJ_AV;
-				break;
-			    default:
-			    std.acflag = OJ_RE;
-			}
-			std.kill_proc();
+			std.acflag = get_flag(sig);
+		   	std.kill_proc();
 			break;
 		}
 		ptrace(PTRACE_GETREGS,std.pid,NULL,&reg);
-		printf("systemcall:%d\n",reg.REG_SYSCALL);
-		printf("count:%d\n",system_calls_count[reg.REG_SYSCALL]);
 		if(reg.REG_SYSCALL>0&&system_calls_count[reg.REG_SYSCALL]==0){
 			std.acflag=OJ_RE;
 			std.kill_proc();
@@ -425,7 +393,69 @@ int watch_solution(proc_info &std){
 		ptrace(PTRACE_SYSCALL,std.pid,NULL,NULL);
 	}
 }
-int judge_solution(){}
+void find_next_nonspace(int &c1,int &c2,FILE *& f1, FILE *&f2){
+	while(isspace(c1)) c1 = fgetc(f1);
+	while(isspace(c2)) c2 = fgetc(f2);
+	return ;
+}
+int compare_diff(char *p1, char *p2){
+	int c1,c2,ret;
+	FILE *f1,*f2;
+	f1 = fopen(p1,"r");
+	f2 = fopen(p2,"r");
+	if(!f1||!f2) return OJ_RE;
+	while(1){
+		c1=fgetc(f1);
+		c2=fgetc(f2);
+		if(c1==EOF&&c2==EOF){ret = OJ_AC;break;}
+		if(c1!=c2){ret =OJ_WA;break;} 
+	}
+	if(f1) fclose(f1);
+	if(f2) fclose(f2);
+	return ret;
+}
+int compare_pe(char *p1, char *p2){
+	int c1,c2,ret,flag=1;
+	FILE *f1,*f2;
+	f1 = fopen(p1,"r");
+	f2 = fopen(p2,"r");
+	if(!f1||!f2) return OJ_RE;
+	while(flag){
+		c1=fgetc(f1);
+		c2=fgetc(f2);
+		find_next_nonspace(c1,c2,f1,f2);
+		if(c1==EOF&&c2==EOF){ret = OJ_PE;break;}
+		if(c1==EOF||c2==EOF){ret = OJ_WA;break;}
+		while(flag){
+			if(c1!=c2){
+				ret = OJ_WA;
+				flag = 0;
+				break;
+			} 
+			c1=fgetc(f1);
+			c2=fgetc(f2);
+			if(isspace(c1)&&isspace(c2))
+				break;
+		}
+	}
+	if(f1) fclose(f1);
+	if(f2) fclose(f2);
+	return ret;
+}
+int judge_solution(proc_info &std){
+	int peflag=OJ_AC;
+	int ret;
+	if(std.judge_memory())return 0;
+	if(std.judge_time())return 0;
+	if(std.judge_outputsize())return 0;
+	if(std.acflag!=OJ_AC) return 0;
+	ret = compare_diff(std.data_out,std.user_out);
+	if(ret!=OJ_WA){
+		std.acflag=ret;
+		return 0;
+	}
+	compare_pe(std.data_out,std.user_out);
+}
 int get_solution(proc_info &std){
 	;
 }
@@ -442,10 +472,7 @@ int main(int argc , char ** argv){
 		pid_t p_id;
 		get_solution(std);
 		compile_ok = compile(std.lang);
-		printf("编译结束\n");
 		if(!compile_ok){
-			printf("运行\n");
-			//运行代码
 			p_id = fork();
 			if(p_id==0)
 				run_solution(std);
@@ -453,14 +480,13 @@ int main(int argc , char ** argv){
 				std.pid=p_id;
 				watch_solution(std);
 				std.debug_show_real_info();
-				judge_solution();
+				judge_solution(std);
 			}
 		}
 		else{
 			//输出ce信息到数据库
 			printf("编译错误\n");
 		}
-		return 0;
 	}
-		return 0;
+	return 0;
 }
