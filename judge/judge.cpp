@@ -11,6 +11,8 @@
 #include <sys/ptrace.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <algorithm>
+#include <mysql++.h>
 #include <queue>
 #define STD_MB 1048576
 #define STD_T_LIM 2
@@ -30,8 +32,13 @@
 #define OJ_OL 9
 #define OJ_RE 10
 #define OJ_CE 11
-#define OJ_CO 12
-#define OJ_TR 13
+#define OJ_RE_SO 12
+//StackOverFLOW
+#define OJ_DBZ 13
+//DIVIDE_BY_ZERO
+#define OJ_AV 14
+//ACCESS_VIOLATION
+
 
 #ifdef __i386
 #define REG_SYSCALL orig_eax
@@ -44,8 +51,17 @@
 #define REG_ARG0 rdi
 #define REG_ARG1 rsi
 #endif
+//db_info
+char db_name[BUFFER_SIZE];
+char db_user[BUFFER_SIZE];
+char db_password[BUFFER_SIZE];
+char db_address[BUFFER_SIZE];
+char get_some_solution_info[BUFFER_SIZE];
+int oj_client_num=0;
+int oj_sleep_time=10;
+mysqlpp::Connection conn;
 
-#define JUDGE_CLIENT_NUM 2 
+#define JUDGE_CLIENT_NUM 10 
 char OJ_HOME[BUFFER_SIZE];
 char WORK_DIR[JUDGE_CLIENT_NUM][BUFFER_SIZE];
 char PIPE_DIR[JUDGE_CLIENT_NUM][BUFFER_SIZE];
@@ -55,17 +71,16 @@ int DEBUG;
 void call_for_exit(){
 	int i;
 	printf("stop\n正在关闭子进程....\n");
-	for(i = 0 ; i < JUDGE_CLIENT_NUM;++i){
+	for(i = 0 ; i < oj_client_num ;++i){
 		int &tmp = CLIENT_PID[i];
 		if(tmp!=-1)
 			kill(tmp,SIGKILL);
 	}
 }
-
 void call_for_exit(int s){
 	int i;
 	printf("stop\n正在关闭子进程....\n");
-	for(i = 0 ; i < JUDGE_CLIENT_NUM;++i){
+	for(i = 0 ; i < oj_client_num;++i){
 		int &tmp = CLIENT_PID[i];
 		if(tmp!=-1)
 			kill(tmp,SIGKILL);
@@ -94,11 +109,12 @@ void init_client_info(){
 	char pipe_tmp[BUFFER_SIZE];
 	sprintf(OJ_HOME,"/home/judge/");//最好通过文件来读
 	sprintf(pipe_tmp,"%spipe/",OJ_HOME);
+	chdir(OJ_HOME);
 	if(access(pipe_tmp,F_OK)==-1){
 		printf("缺少以下目录,请用管理员创建\n%s\n",pipe_tmp);
 		exit(0);
 	}
-	for(i = 0 ; i < JUDGE_CLIENT_NUM;++i){
+	for(i = 0 ; i < oj_client_num;++i){
 		sprintf(WORK_DIR[i],"%srun%d/",OJ_HOME,i);
 		sprintf(PIPE_DIR[i],"%spipe/%d",OJ_HOME,i);
 		if(access(WORK_DIR[i],F_OK)==-1){
@@ -128,46 +144,41 @@ void init_client_info(){
 	}
 	if(DEBUG){
 		printf("OJ_HOME:%s\n",OJ_HOME);
-		for(i = 0 ; i < JUDGE_CLIENT_NUM;++i){
+		for(i = 0 ; i < oj_client_num;++i){
 			printf("client_id:%d\nwork_dir:%s\npipe_dir:%s\n",i,WORK_DIR[i],PIPE_DIR[i]);
 		}
 	}
-	
 }
-
 int get_free_client(){
 	static int ID=0;
 	int status,i ;
 	int status2;
-	for(i= 0; i < JUDGE_CLIENT_NUM*2;++i){
+	for(i= 0; i < oj_client_num*2;++i){
 		int jg1 = waitpid(CLIENT_PID[ID],&status,WNOHANG|WUNTRACED);
 		if(CLIENT_PID[ID]==-1){
-			printf("进到这里了\n");
 			create_client(ID);
 		}
 		else if(WIFSTOPPED(status)){
 			if(DEBUG){
 				printf("get_id:%d\n",ID);
 			}
+
 			return ID;			
 		}
 		ID++;
-		ID%=JUDGE_CLIENT_NUM;
-		printf("阻塞了吗?\n");
+		ID%=oj_client_num;
 	}
 	return -1;
 }
 struct solution_info{
 	int run_id;
 	int problem_id;
-	int time;
-	int memory;
 	int lang;
 	void read(char *buff){
-		sscanf(buff,"%d%d%d%d%d",&run_id,&problem_id,&time,&memory,&lang);
+		sscanf(buff,"%d%d%d",&run_id,&problem_id,&lang);
 	}
 	void write(char *buff){
-		sprintf(buff,"%d %d %d %d %d\n",run_id,problem_id,time,memory,lang);
+		sprintf(buff,"%d %d %d\n",run_id,problem_id,lang);
 	}
 }; 
 void send_solution_info(int id,solution_info &info){
@@ -181,9 +192,78 @@ void send_solution_info(int id,solution_info &info){
 	rs = write(PIPE_FP[id],tmp,strlen(tmp));
 	kill(CLIENT_PID[id],SIGCONT);
 }
+int after_equal(char *c){
+	int i;
+	for(i=0;c[i]!='=';++i);
+	return ++i;
+}
+void trim(char * c){
+    char buf[BUFFER_SIZE];
+    char * start,*end;
+	strcpy(buf,c);
+    start=buf;
+	while(isspace(*start)) start++;
+    end=start;
+	while(!isspace(*end)) end++;
+	*end='\0';
+	strcpy(c,start);
+}
+int read_buf(char *t , char * key, char *value){
+	if(strncmp(t,key,strlen(key))==0){
+		strcpy(value,t+after_equal(t));
+		trim(value);
+		if(DEBUG)printf("%s\n",value);
+		return 1;
+	}
+	return 0;
+}
+int read_int(char *t,char *key , int *value){
+	char buf2[BUFFER_SIZE];
+	if(read_buf(t,key,buf2))
+		sscanf(buf2,"%d",value);
+
+}
+void init_db_info(){
+	FILE *fp=NULL;
+	char buf[BUFFER_SIZE];
+	printf("打开成功\n");
+	fp=fopen("/home/judge/etc/judge.conf","r");
+	if(fp==NULL) exit(1);
+	printf("打开成功\n");
+	while(fgets(buf,BUFFER_SIZE-1,fp)){
+		read_buf(buf,"DB_ADDRESS",db_address);
+		read_buf(buf,"DB_NAME",db_name);
+		read_buf(buf,"DB_USER_NAME",db_user);
+		read_buf(buf,"DB_PASSWORD",db_password);
+		read_int(buf,"OJ_SLEEP_TIME",&oj_sleep_time);
+		read_int(buf,"OJ_CLIENT_NUM",&oj_client_num);
+	}
+	sprintf(get_some_solution_info,"SELECT solution_id,problem_id,language FROM solution_info WHERE result=0");
+}
+void init_mysql(){
+	conn.set_option(new mysqlpp::SetCharsetNameOption("utf8"));
+	conn.connect(db_name,db_address,db_user,db_password);
+	conn.query("SET NAMES utf8");
+}
+void get_some_solution(std::queue<solution_info> &q){
+	char buf[BUFFER_SIZE];
+	mysqlpp::Query query= conn.query(get_some_solution_info);
+	mysqlpp::StoreQueryResult res = query.store();
+	mysqlpp::StoreQueryResult::const_iterator it;
+	for(it = res.begin(); it != res.end();++it){
+		mysqlpp::Row row = *it;
+		sprintf(buf,"%s %s %s",row[0].data(),row[1].data(),row[2].data());
+		printf("已获得:%s\n",buf);
+		solution_info tmp;
+		tmp.read(buf);
+		q.push(tmp);
+	}
+}
 int main(){
 	int i;
+	DEBUG=1;
 	char tmp[BUFFER_SIZE];
+	std::queue<solution_info> q;
 	for(i=0;i<JUDGE_CLIENT_NUM;++i)
 		CLIENT_PID[i]=-1;
 	atexit(call_for_exit);
@@ -191,31 +271,22 @@ int main(){
 	signal(SIGKILL,call_for_exit);
 	signal(SIGTERM,call_for_exit);
 	DEBUG=1;
+	init_db_info();
+	init_mysql();
 	init_client_info();
-	FILE *fp;
-	fp = fopen("data","r");
-	std::queue<solution_info> q;
-	while(fgets(tmp,sizeof(tmp)-1,fp)!=NULL){
-		solution_info tt;
-		tt.read(tmp);
-		q.push(tt);
+	while(1){
+		get_some_solution(q);
+		while(!q.empty()){
+			int id = -1;
+			solution_info t = q.front();
+			q.pop();
+			do{
+				id=get_free_client();
+			}while(id==-1);
+			printf("开始发送了吗\n");
+			send_solution_info(id,t);
+		}
+		sleep(oj_sleep_time);
 	}
-	while(!q.empty()){
-		int id=-1;
-		solution_info t = q.front();
-		q.pop();
-		do{
-			id=get_free_client();
-			printf("获得的id:%d\n",id);
-		}while(id==-1);
-		printf("出来\n");
-		send_solution_info(id,t);
-		sleep(1);
-	}
-	printf("好像搞定了的样子\n");
-	sleep(10);
-
-
-//	execl("../judge_client/judge_client_Main");
-	
+	return 0;
 }
