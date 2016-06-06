@@ -52,7 +52,7 @@ create table if not exists problem_info(
 	CE INT DEFAULT 0,
 	hide BOOLEAN DEFAULT FALSE,
 	is_delete BOOLEAN DEFAULT FALSE
-)AUTO_INCREMENT=1000 CHARSET=utf8;
+)AUTO_INCREMENT=1000 DEFAULT CHARSET=utf8;
 
 CREATE TABLE IF NOT EXISTS contest_info(
 	contest_id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,       -- unsign
@@ -65,9 +65,9 @@ CREATE TABLE IF NOT EXISTS contest_info(
 )CHARSET=utf8;
 
 CREATE TABLE IF NOT EXISTS contest_problem(
-	problem_id INT NOT NULL ,          --大题目的编号
-	contest_id INT DEFAULT NULL,       --比赛的编号
-	title VARCHAR(100) NOT NULL DEFAULT '',	--比赛标题 
+	problem_id INT NOT NULL ,          
+	contest_id INT DEFAULT NULL,       
+	title VARCHAR(100) NOT NULL DEFAULT '',	
 	submit INT DEFAULT 0,
 	solved INT DEFAULT 0,
 	AC INT DEFAULT 0,
