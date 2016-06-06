@@ -1,4 +1,6 @@
 #include <unistd.h>
+#include <iostream>
+#include <stdarg.h>
 #include <string.h>
 #include <sys/user.h>
 #include <sys/stat.h>
@@ -15,6 +17,7 @@
 #include "okcalls.h"
 #include <fcntl.h>
 #include <algorithm>
+#include <mysql++.h>
 #define STD_MB 1048576
 #define STD_T_LIM 2
 #define STD_F_LIM (STD_MB<<5)
@@ -33,13 +36,11 @@
 #define OJ_OL 9
 #define OJ_RE 10
 #define OJ_CE 11
-#define OJ_CO 12
-#define OJ_TR 13
-#define OJ_RE_SO 14
+#define OJ_RE_SO 12
 //StackOverFLOW
-#define OJ_DBZ 15
+#define OJ_DBZ 13
 //DIVIDE_BY_ZERO
-#define OJ_AV 16
+#define OJ_AV 14
 //ACCESS_VIOLATION
 
 #ifdef __i386
@@ -53,6 +54,13 @@
 #define REG_ARG0 rdi
 #define REG_ARG1 rsi
 #endif
+
+//db_info
+char db_name[BUFFER_SIZE];
+char db_user[BUFFER_SIZE];
+char db_password[BUFFER_SIZE];
+char db_address[BUFFER_SIZE];
+mysqlpp::Connection conn;
 /*
 copy from hustoj
 https://github.com/zhblue/hustoj/blob/master/beta/core/judge_client/judge_client.cc
@@ -64,12 +72,6 @@ int COMPILE_FSIZE=128*STD_MB;//字节
 int COMPILE_MSIZE=64*STD_MB;//使用内存 单位字节
 
 int Debug=0;
-
-//运行限制通过数据库获得
-//通过父进程管道输送,并保存在proc里
-//int RUN_TIME  = 1 ;//单位秒
-//int RUN_FSIZE = 10*STD_MB;//输出文件大小，单位mb
-//int RUN_MSIZE = 32*STD_MB;//使用内存大小，单位mb
 
 
 
@@ -83,6 +85,17 @@ const char * CP_C[] = { "gcc", "Main.c", "-o", "Main", "-O2","-Wall", "-lm",
 		               "--static", "-std=c99", "-DONLINE_JUDGE", NULL};
 const char * CP_CC[] = { "g++", "Main.cc", "-o", "Main","-O2", "-Wall",
 			            "-lm", "--static", "-DONLINE_JUDGE", NULL};
+const char lang_ext[2][8]={"c","cpp"};
+int execute_cmd(const char * fmt, ...){
+    char cmd[BUFFER_SIZE];
+    int ret = 0;
+    va_list ap;
+    va_start(ap, fmt);
+    vsprintf(cmd, fmt, ap);
+    ret = system(cmd);
+    va_end(ap);
+    return ret;
+}
 long get_file_size(const char * filename){
     struct stat f_stat;
 	if (stat(filename, &f_stat) == -1)
@@ -112,9 +125,7 @@ struct proc_info{
 	int real_time;//所耗时间单位毫秒
 	int real_memory;//所耗内存单位kb
 	void debug_show_real_info(){
-		printf("time:%d\nmemory:%d\n",real_time,real_memory);
-		printf("result:%d\n",acflag);
-
+		printf("runid:%d result:%d\n",runid,acflag);
 	}
 	void init_real_info(){
 		real_time=real_memory=0;
@@ -132,18 +143,26 @@ struct proc_info{
 	}
 	bool init_problem_info(char *buff){
 		int rs;
-		printf("%d:read:%s\n",client_id,buff);
-		rs = sscanf(buff,"%d%d%d%d%d",&runid,&problem_id,&time,&memory,&lang);
+		rs = sscanf(buff,"%d%d%d",&runid,&problem_id,&lang);
 		sprintf(data_in,"%sdata/%d/data.in",oj_home,problem_id);
 		sprintf(data_out,"%sdata/%d/data.out",oj_home,problem_id);
 		sprintf(user_out,"%suser.out",work_dir);
 		outputsize=get_file_size(data_out);
+		char buf[BUFFER_SIZE];
+		char tmp[BUFFER_SIZE];
+		sprintf(tmp,"SELECT time_limit,memory_limit FROM problem_info WHERE problem_id=%d",problem_id);;
+		mysqlpp::Query query = conn.query(tmp);
+		mysqlpp::StoreQueryResult res = query.store();
+		mysqlpp::StoreQueryResult::const_iterator it;
+		it=res.begin();
+		mysqlpp::Row row = *it;
+		sprintf(buf,"%s %s",row[0].data(),row[1].data());
+		rs+=sscanf(buf,"%d%d",&time,&memory);	
 		return rs==5;
 	}
 	void Debug_ShowInfo(){
 		char tmp[BUFFER_SIZE];
 		sprintf(tmp,"%sDebug.out",work_dir);
-		printf("son:client_id:%d tmp:%s\n",client_id,tmp);
 		if(fp==NULL)
 			fp = fopen(tmp,"a+");
 		if(fp==NULL){
@@ -159,11 +178,9 @@ struct proc_info{
 
 	}
 	void get_solution_info(){
-		printf("son:stop\n");
 		raise(SIGSTOP);
 		if(pipe_fd==-1)
 			pipe_fd=open(pipe_dir,O_RDONLY);
-		printf("son:pipe_fd:%d\n",pipe_fd);
 		assert(pipe_fd!=-1);
 		int len = read(pipe_fd,buff,sizeof(buff)-1);
 		buff[len]=0;
@@ -249,7 +266,6 @@ int get_flag(int t){
 	    return OJ_RE;
 	}
 } 
-
 void set_compile_info(){
 	struct rlimit LIM;
 	LIM.rlim_max = COMPILE_TIME*2;
@@ -293,7 +309,6 @@ void set_run_info(proc_info &info){
 	//进程数目
 	///////初期我只打算做c++跟c，所以后面的活你们加油！
 }
-
 int compile(int lang ){
 	int pid;
 	pid = fork();
@@ -333,13 +348,11 @@ int run_solution(proc_info &info){
 	int lang = info.lang;
 	///////初期我只打算做c++跟c，所以后面的活你们加油！
 	chdir(info.work_dir);
-	printf("data_in:%s\n",info.data_in);
-   
 	freopen(info.data_in,"r",stdin);
 	freopen("./user.out","w",stdout);
 	freopen("./error.out","a+",stderr);
-	chmod("./user.out",777);
-	chmod("./error.out",777);
+	chmod("user.out",777);
+	chmod("error.out",777);
 	chroot(info.work_dir);
 	nice(19);
 	
@@ -454,21 +467,108 @@ int judge_solution(proc_info &std){
 		std.acflag=ret;
 		return 0;
 	}
-	compare_pe(std.data_out,std.user_out);
+	std.acflag=compare_pe(std.data_out,std.user_out);
 }
 int get_solution(proc_info &std){
+	char buf[BUFFER_SIZE];
+	char tmp[BUFFER_SIZE];
+	char src_path[BUFFER_SIZE];
+	sprintf(tmp,"SELECT source FROM source_code WHERE solution_id=%d",std.runid);
+	mysqlpp::Query query = conn.query(tmp);
+	mysqlpp::StoreQueryResult res = query.store();
+	mysqlpp::StoreQueryResult::const_iterator it;
+	it=res.begin();
+	mysqlpp::Row row = *it;
+	sprintf(src_path,"Main.%s",lang_ext[std.lang]);
+	FILE *fp = fopen(src_path,"w");
+	fprintf(fp,"%s",row[0].data());
+	fclose(fp);
 	;
 }
+int after_equal(char *c){
+	int i;
+	for(i=0;c[i]!='=';++i);
+	return ++i;
+}
+void trim(char * c){
+    char buf[BUFFER_SIZE];
+    char * start,*end;
+	strcpy(buf,c);
+    start=buf;
+	while(isspace(*start)) start++;
+	    end=start;
+	while(!isspace(*end)) end++;
+	*end='\0';
+	strcpy(c,start);
+}
+int read_buf(char *t , char * key, char *value){
+	if(strncmp(t,key,strlen(key))==0){
+		strcpy(value,t+after_equal(t));
+		trim(value);
+		return 1;
+	}
+	return 0;
+}
+int read_int(char *t,char *key , int *value){
+	char buf2[BUFFER_SIZE];
+	if(read_buf(t,key,buf2))
+		sscanf(buf2,"%d",value);
+}
+void init_db_info(){
+	FILE *fp=NULL;
+	char buf[BUFFER_SIZE];
+	fp=fopen("../etc/judge.conf","r");
+	if(fp==NULL) exit(1);
+	while(fgets(buf,BUFFER_SIZE-1,fp)){
+		read_buf(buf,"DB_ADDRESS",db_address);
+		read_buf(buf,"DB_NAME",db_name);
+		read_buf(buf,"DB_USER_NAME",db_user);
+		read_buf(buf,"DB_PASSWORD",db_password);
+	}
+}
+void init_mysql(){
+	conn.set_option(new mysqlpp::SetCharsetNameOption("utf8"));
+	conn.connect(db_name,db_address,db_user,db_password);
+	conn.query("SET NAMES utf8");
+}
+void updata_solution(proc_info &std){
 
+}
+void add_ce_info(proc_info &std){
+	char buf[BUFFER_SIZE];
+	char tmp[BUFFER_SIZE];
+	char src_path[BUFFER_SIZE];
+	char ceinfo[(1<<16)],*cend;
+	FILE *fp = fopen("ce.txt","r");
+	cend=ceinfo;
+	while(fgets(cend,1024,fp)){
+		cend+=strlen(cend);
+		if(cend-ceinfo>4000)break;
+	}
+	mysqlpp::Query query = conn.query();
+	query<<"INSERT INTO compile_info (solution_id,error) VALUES("<<std.runid<<",";
+	query<<mysqlpp::quote<<ceinfo<<")";
+	std::cout<<query<<std::endl;
+	mysqlpp::SimpleResult ans = query.execute();
+	if(ans)
+		printf("success to add ce info\n");
+	else
+		printf("failt to add ce info\n");
+
+
+}
 int main(int argc , char ** argv){
 	int compile_ok;
 	int i;
 	proc_info std;
 	std.init_client_info(argv);
+	init_db_info();
+	init_mysql();
 	init_compile_systemcall_map();
 	while(1){
 		std.get_solution_info();
-		init_systemcall_count(std.pid);
+		execute_cmd("rm %s/*",std.work_dir);
+		init_systemcall_count(std.lang);
 		pid_t p_id;
 		get_solution(std);
 		compile_ok = compile(std.lang);
@@ -479,14 +579,16 @@ int main(int argc , char ** argv){
 			else{
 				std.pid=p_id;
 				watch_solution(std);
-				std.debug_show_real_info();
 				judge_solution(std);
 			}
 		}
 		else{
+			updata_solution(std);
+			add_ce_info(std);
+			std.acflag=OJ_CE;
 			//输出ce信息到数据库
-			printf("编译错误\n");
 		}
+		std.debug_show_real_info();
 	}
 	return 0;
 }
