@@ -1,0 +1,98 @@
+CREATE DATABASE zhbitoj;
+USE zhbitoj;
+
+CREATE TABLE IF NOT EXISTS  compile_info(
+	solution_id INT NOT NULL PRIMARY KEY ,
+	error TEXT,
+	is_delete BOOLEAN DEFAULT FALSE
+)CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS solution_info(
+	solution_id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	problem_id INT NOT NULL DEFAULT 0,
+	user_name VARCHAR(40) NOT NULL, 
+	run_time INT NOT NULL DEFAULT 0,
+	run_memory INT NOT NULL DEFAULT 0,
+	in_date DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00',
+	result INT NOT NULL DEFAULT 0,
+	language INT NOT NULL DEFAULT 0,
+	contest_id INT DEFAULT 0,
+	code_length INT NOT NULL DEFAULT 0,
+	is_delete BOOLEAN DEFAULT FALSE
+)CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS source_code(
+	solution_id INT NOT NULL PRIMARY KEY,
+	source TEXT NOT NULL,
+	is_delete BOOLEAN DEFAULT FALSE
+)CHARSET=utf8;
+
+
+create table if not exists problem_info(
+	problem_id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	title varchar(100) NOT NULL DEFAULT '',
+	description TEXT,
+	input TEXT,
+	output TEXT,
+	sample_input TEXT,
+	sample_output TEXT,
+	hint TEXT DEFAULT '',
+	source VARCHAR(40) DEFAULT '',
+	time_limit INT NULL DEFAULT 0,
+	memory_limit INT NULL DEFAULT 0,
+	submit INT DEFAULT 0,
+	solved INT DEFAULT 0,
+	AC INT DEFAULT 0,
+	PE INT DEFAULT 0,
+	WA INT DEFAULT 0,
+	RE INT DEFAULT 0,
+	TLE INT DEFAULT 0,
+	MLE INT DEFAULT 0,
+	OLE INT DEFAULT 0,
+	CE INT DEFAULT 0,
+	hide BOOLEAN DEFAULT FALSE,
+	is_delete BOOLEAN DEFAULT FALSE
+)AUTO_INCREMENT=1000 CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS contest_info(
+	contest_id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,       -- unsign
+	title VARCHAR(100) NOT NULL,
+	description TEXT,
+	start_time DATETIME  DEFAULT '0000-00-00 00:00:00',
+	end_time DATETIME  DEFAULT '0000-00-00 00:00:00',
+	mode INT DEFAULT 1 ,
+	langmask INT NOT NULL DEFAULT 3
+)CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS contest_problem(
+	problem_id INT NOT NULL ,          --大题目的编号
+	contest_id INT DEFAULT NULL,       --比赛的编号
+	title VARCHAR(100) NOT NULL DEFAULT '',	--比赛标题 
+	submit INT DEFAULT 0,
+	solved INT DEFAULT 0,
+	AC INT DEFAULT 0,
+	PE INT DEFAULT 0,
+	WA INT DEFAULT 0,
+	RE INT DEFAULT 0,
+	TLE INT DEFAULT 0,
+	MLE INT DEFAULT 0,
+	OLE INT DEFAULT 0,
+	CE INT DEFAULT 0,
+	is_delete BOOLEAN DEFAULT FALSE
+)CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS user_info(
+	user_name	VARCHAR(40) PRIMARY KEY, 					
+	password	VARCHAR(40), 			    -- MD5加密后的大小
+	email		VARCHAR(40),
+	nick		VARCHAR(40),
+	student_id	VARCHAR(20),
+	note		TEXT DEFAULT '',
+	register	DATETIME DEFAULT '0000-00-00 00:00:00'
+)CHARSET=utf8;
+
+
+
+
+
+
