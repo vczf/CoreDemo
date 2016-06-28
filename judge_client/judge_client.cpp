@@ -17,10 +17,10 @@
 #include "okcalls.h"
 #include <fcntl.h>
 #include <algorithm>
-#include <mysql++.h>
+#include <mysql/mysql.h>
 #define STD_MB 1048576
 #define STD_T_LIM 2
-#define STD_F_LIM (STD_MB<<5)
+#define STD_F_LIM (STD_MB<<8)
 #define STD_M_LIM (STD_MB<<7)
 #define BUFFER_SIZE 1024 
 
@@ -60,7 +60,8 @@ char db_name[BUFFER_SIZE];
 char db_user[BUFFER_SIZE];
 char db_password[BUFFER_SIZE];
 char db_address[BUFFER_SIZE];
-mysqlpp::Connection conn;
+//mysqlpp::Connection conn;
+MYSQL *conn;
 /*
 copy from hustoj
 https://github.com/zhblue/hustoj/blob/master/beta/core/judge_client/judge_client.cc
@@ -73,6 +74,13 @@ int COMPILE_MSIZE=64*STD_MB;//使用内存 单位字节
 
 int Debug=0;
 
+const char * mysql_field[]={
+	"","","","",
+	"AC","PE","WA",
+	"TLE","MLE","OLE",
+	"RE","CE","RE",
+	"RE","RE"
+};
 
 
 //0GCC 1G++
@@ -83,7 +91,7 @@ int const SL_SELECT_SIZE=256;
 int system_calls_count[256];
 const char * CP_C[] = { "gcc", "Main.c", "-o", "Main", "-O2","-Wall", "-lm",
 		               "--static", "-std=c99", "-DONLINE_JUDGE", NULL};
-const char * CP_CC[] = { "g++", "Main.cc", "-o", "Main","-O2", "-Wall",
+const char * CP_CC[] = { "g++", "Main.cpp", "-o", "Main","-O2", "-Wall",
 			            "-lm", "--static", "-DONLINE_JUDGE", NULL};
 const char lang_ext[2][8]={"c","cpp"};
 int execute_cmd(const char * fmt, ...){
@@ -110,7 +118,9 @@ struct proc_info{
 	int memory;//所耗内存单位kb
 	int outputsize;//输出文件大小
 	int lang;//语言
-	int runid;
+	int contest_id;
+	char user_name[BUFFER_SIZE];
+	int run_id;
 	int acflag;
 	char work_dir[BUFFER_SIZE];//工作目录
 	char pipe_dir[BUFFER_SIZE];// 
@@ -119,13 +129,14 @@ struct proc_info{
 	char data_out[BUFFER_SIZE];
 	char user_out[BUFFER_SIZE];
 	char buff[BUFFER_SIZE];
+	char in_date[BUFFER_SIZE];
 	int pipe_fd;
 	int client_id;
 	FILE *fp;
 	int real_time;//所耗时间单位毫秒
 	int real_memory;//所耗内存单位kb
 	void debug_show_real_info(){
-		printf("runid:%d result:%d\n",runid,acflag);
+		printf("run_id:%d result:%d\n",run_id,acflag);
 	}
 	void init_real_info(){
 		real_time=real_memory=0;
@@ -143,22 +154,27 @@ struct proc_info{
 	}
 	bool init_problem_info(char *buff){
 		int rs;
-		rs = sscanf(buff,"%d%d%d",&runid,&problem_id,&lang);
+		char in_date_tmp[2][32];
+		rs = sscanf(buff,"%s%s%s%d%d%d%d",in_date_tmp[0],in_date_tmp[1],user_name,&run_id,&problem_id,&lang,&contest_id);
+		rs--;
+		sprintf(in_date,"%s %s",in_date_tmp[0],in_date_tmp[1]);
 		sprintf(data_in,"%sdata/%d/data.in",oj_home,problem_id);
 		sprintf(data_out,"%sdata/%d/data.out",oj_home,problem_id);
 		sprintf(user_out,"%suser.out",work_dir);
 		outputsize=get_file_size(data_out);
 		char buf[BUFFER_SIZE];
 		char tmp[BUFFER_SIZE];
-		sprintf(tmp,"SELECT time_limit,memory_limit FROM problem_info WHERE problem_id=%d",problem_id);;
-		mysqlpp::Query query = conn.query(tmp);
-		mysqlpp::StoreQueryResult res = query.store();
-		mysqlpp::StoreQueryResult::const_iterator it;
-		it=res.begin();
-		mysqlpp::Row row = *it;
-		sprintf(buf,"%s %s",row[0].data(),row[1].data());
+		sprintf(tmp,"SELECT time_limit,memory_limit FROM problem_info WHERE problem_id=%d",problem_id);
+		MYSQL_RES *res;
+		MYSQL_ROW row;
+		mysql_real_query(conn,tmp,strlen(tmp));
+		printf("查询失败了?\n");
+		res=mysql_store_result(conn);
+		row = mysql_fetch_row(res);
+		sprintf(buf,"%s %s",row[0],row[1]);
+		mysql_free_result(res);
 		rs+=sscanf(buf,"%d%d",&time,&memory);	
-		return rs==5;
+		return rs==8;
 	}
 	void Debug_ShowInfo(){
 		char tmp[BUFFER_SIZE];
@@ -172,7 +188,7 @@ struct proc_info{
 		fprintf(fp,"OJ_HOME:%s\n",oj_home);
 		fprintf(fp,"work_dir:%s\n",work_dir);
 		fprintf(fp,"pipe_dir:%s\n",pipe_dir);
-		fprintf(fp,"runid:%d\nproblem:%d\ntime:%d\nmemory:%d\nlang:%d\n",runid,problem_id,time,memory,lang);
+		fprintf(fp,"run_id:%d\nproblem:%d\ntime:%d\nmemory:%d\nlang:%d\n",run_id,problem_id,time,memory,lang);
 		fclose(fp);
 		fp=NULL;
 
@@ -183,6 +199,7 @@ struct proc_info{
 			pipe_fd=open(pipe_dir,O_RDONLY);
 		assert(pipe_fd!=-1);
 		int len = read(pipe_fd,buff,sizeof(buff)-1);
+		printf("son:读取成功!\n内容:%s\n",buff);
 		buff[len]=0;
 		init_real_info();
 		if(init_problem_info(buff)){
@@ -220,7 +237,6 @@ struct proc_info{
 			acflag=OJ_OL;
 			return true;
 		}
-
 		return false;
 
 	}
@@ -380,7 +396,7 @@ int watch_solution(proc_info &std){
 		std.real_time += (ruse.ru_stime.tv_sec * 1000 + ruse.ru_stime.tv_usec / 1000);
 		if(std.judge_memory()){std.kill_proc(); break;}
 		if(std.judge_time()){std.kill_proc(); break;}
-		if(std.judge_outputsize()){std.kill_proc(); break;}		
+		//if(std.judge_outputsize()){std.kill_proc(); break;}		
 		if(WIFEXITED(status)) break;
 		if(std.acflag!=OJ_AC){std.kill_proc();break;}
 		exitcode = WEXITSTATUS(status);
@@ -473,16 +489,17 @@ int get_solution(proc_info &std){
 	char buf[BUFFER_SIZE];
 	char tmp[BUFFER_SIZE];
 	char src_path[BUFFER_SIZE];
-	sprintf(tmp,"SELECT source FROM source_code WHERE solution_id=%d",std.runid);
-	mysqlpp::Query query = conn.query(tmp);
-	mysqlpp::StoreQueryResult res = query.store();
-	mysqlpp::StoreQueryResult::const_iterator it;
-	it=res.begin();
-	mysqlpp::Row row = *it;
+	sprintf(tmp,"SELECT source FROM source_code WHERE solution_id=%d",std.run_id);
+	MYSQL_RES *res;
+	MYSQL_ROW row;
+	mysql_real_query(conn,tmp,strlen(tmp));
+	res = mysql_store_result(conn);
+	row = mysql_fetch_row(res);
 	sprintf(src_path,"Main.%s",lang_ext[std.lang]);
 	FILE *fp = fopen(src_path,"w");
-	fprintf(fp,"%s",row[0].data());
+	fprintf(fp,"%s",row[0]);
 	fclose(fp);
+	mysql_free_result(res);
 	;
 }
 int after_equal(char *c){
@@ -527,35 +544,131 @@ void init_db_info(){
 	}
 }
 void init_mysql(){
-	conn.set_option(new mysqlpp::SetCharsetNameOption("utf8"));
+	conn = mysql_init(NULL);
+	if(!mysql_real_connect(conn,db_address,db_user,db_password,db_name,3306,NULL,0)){
+		printf("connect fail\n");
+		exit(0);
+	}
+    const char * utf8sql = "set names utf8";
+	if (mysql_real_query(conn, utf8sql, strlen(utf8sql)))
+	{
+
+        exit(0);
+	}
+
+	/*conn.set_option(new mysqlpp::SetCharsetNameOption("utf8"));
 	conn.connect(db_name,db_address,db_user,db_password);
 	conn.query("SET NAMES utf8");
+	*/
 }
-void updata_solution(proc_info &std){
-
-}
-void add_ce_info(proc_info &std){
-	char buf[BUFFER_SIZE];
+void mysql_update_problem_info(proc_info &std,bool is_ac ){
 	char tmp[BUFFER_SIZE];
-	char src_path[BUFFER_SIZE];
+	MYSQL_RES *res;
+	MYSQL_ROW row;
+	sprintf(tmp,"update problem_info set %s=%s+1 , submit=submit+1 where problem_id=%d",mysql_field[std.acflag],mysql_field[std.acflag],std.problem_id);
+	printf("%s\n",tmp);
+	mysql_real_query(conn,tmp,strlen(tmp));
+	if(!is_ac && std.acflag==OJ_AC){
+		printf("gg3\n");
+		sprintf(tmp,"update problem_info set solve=solve+1 where problem_id=%d",std.problem_id);
+		mysql_real_query(conn,tmp,strlen(tmp));
+	}
+}
+void mysql_add_problem_info(proc_info &std){
+	MYSQL_RES *res;
+	MYSQL_ROW row;
+	char tmp[BUFFER_SIZE];
+	sprintf(tmp,"select * from solution_info where user_name='%s' and problem_id=%d and contest_id=0 and result=%d ",std.user_name,std.problem_id,OJ_AC);
+	printf("add:语句:%s\n",tmp);
+	mysql_real_query(conn,tmp,strlen(tmp));
+	res=mysql_store_result(conn);
+	mysql_free_result(res);
+	mysql_update_problem_info(std,mysql_affected_rows(conn)>0);
+}
+void mysql_update_solution(proc_info &std){
+	MYSQL_RES *res;
+	MYSQL_ROW row;
+	char tmp[BUFFER_SIZE];
+	sprintf(tmp,"update solution_info set run_time=%d,run_memory=%d,result=%d where solution_id = %d",std.real_time,std.real_memory,std.acflag,std.run_id);
+	mysql_real_query(conn,tmp,strlen(tmp));
+}
+void mysql_add_ce_info(proc_info &std){
 	char ceinfo[(1<<16)],*cend;
 	FILE *fp = fopen("ce.txt","r");
+	MYSQL_RES *res;
+	MYSQL_ROW row;
+	char tmp[BUFFER_SIZE];
 	cend=ceinfo;
+	sprintf(tmp,"delete from compile_info where solution_id=%d",std.run_id);
+	mysql_real_query(conn,tmp,strlen(tmp));
 	while(fgets(cend,1024,fp)){
 		cend+=strlen(cend);
-		if(cend-ceinfo>4000)break;
+		if(cend-ceinfo>60000)break;
 	}
-	mysqlpp::Query query = conn.query();
-	query<<"INSERT INTO compile_info (solution_id,error) VALUES("<<std.runid<<",";
-	query<<mysqlpp::quote<<ceinfo<<")";
-	std::cout<<query<<std::endl;
-	mysqlpp::SimpleResult ans = query.execute();
-	if(ans)
-		printf("success to add ce info\n");
-	else
-		printf("failt to add ce info\n");
+	sprintf(tmp,"INSERT INTO compile_info (solution_id,error) VALUES(%d,",std.run_id);
+	cend=tmp+strlen(tmp);
+	*cend++ = '\'';
+    cend += mysql_real_escape_string(conn,cend, ceinfo, strlen(ceinfo));
+    *cend++ = '\'';
+    *cend++ = ')';
+	*cend = 0;
+	mysql_real_query(conn,tmp,strlen(tmp));
+}
+void mysql_change_result(int run_id,int result){
+	char tmp[BUFFER_SIZE];
+	sprintf(tmp,"update solution_info set result=%d where solution_id=%d",result,run_id);
+	mysql_real_query(conn,tmp,strlen(tmp));
+}
+bool mysql_insert_contest_rank_user(proc_info &std){
+	MYSQL_RES *res;
+	MYSQL_ROW row;
+	char tmp[BUFFER_SIZE];
+	sprintf(tmp,"insert into contest_rank_info (in_date,contest_id,problem_id,user_name,submit) values(null,%d,%d,'%s',0)",std.contest_id,std.problem_id,std.user_name);
+	mysql_real_query(conn,tmp,strlen(tmp));
+	res=mysql_store_result(conn);
+	mysql_free_result(res);
 
+	return true;
 
+}
+bool mysql_check_contest_rank_is_hava(proc_info &std){
+	char tmp[BUFFER_SIZE];
+	MYSQL_RES *res;
+	MYSQL_ROW row;
+	sprintf(tmp,"select * from contest_rank_info where user_name='%s' and problem_id=%d and contest_id=%d",std.user_name,std.problem_id,std.contest_id);
+	mysql_real_query(conn,tmp,strlen(tmp));
+	res=mysql_store_result(conn);
+	mysql_free_result(res);
+	printf("确定有没有:%d\n",mysql_affected_rows(conn));
+	return mysql_affected_rows(conn)>0;
+}
+void mysql_update_contest_user_rank(proc_info &std){
+	char tmp[BUFFER_SIZE];
+	MYSQL_RES *res;
+	MYSQL_ROW row;
+	printf("runid:%d,result:%d\nac.size()=%d\n",std.run_id,std.acflag,0);
+	if(!mysql_check_contest_rank_is_hava(std))
+		mysql_insert_contest_rank_user(std);
+	printf("runid:%d,result:%d\nac.size()=%d\n",std.run_id,std.acflag,1);
+	sprintf(tmp,"select problem_id from contest_rank_info where in_date is null and  user_name='%s' and problem_id=%d and contest_id=%d ",std.user_name,std.problem_id,std.contest_id);
+	mysql_real_query(conn,tmp,strlen(tmp));
+	printf("确定多少被更改:%d\n",mysql_affected_rows(conn));
+	printf("%s\n",tmp);
+	if(mysql_affected_rows(conn)!=0){
+		res=mysql_store_result(conn);
+		mysql_free_result(res);
+		 //没有通过过
+		if(std.acflag==OJ_AC){
+			sprintf(tmp,"update contest_rank_info SET in_date='%s' where contest_id=%d and problem_id=%d  and user_name='%s';",std.in_date,std.contest_id,std.problem_id,std.user_name);
+			mysql_real_query(conn,tmp,strlen(tmp));
+			printf("AC情况可以添加么\n");
+		}
+		else{
+			sprintf(tmp,"update contest_rank_info SET submit=submit+1 where contest_id=%d and problem_id=%d and in_date is null and user_name='%s';",std.contest_id,std.problem_id,std.user_name);
+			mysql_real_query(conn,tmp,strlen(tmp));
+		} 
+	}
+	
 }
 int main(int argc , char ** argv){
 	int compile_ok;
@@ -567,12 +680,14 @@ int main(int argc , char ** argv){
 	init_compile_systemcall_map();
 	while(1){
 		std.get_solution_info();
+		mysql_change_result(std.run_id,OJ_CI);
 		execute_cmd("rm %s/*",std.work_dir);
 		init_systemcall_count(std.lang);
 		pid_t p_id;
 		get_solution(std);
 		compile_ok = compile(std.lang);
 		if(!compile_ok){
+			mysql_change_result(std.run_id,OJ_RI);
 			p_id = fork();
 			if(p_id==0)
 				run_solution(std);
@@ -583,12 +698,24 @@ int main(int argc , char ** argv){
 			}
 		}
 		else{
-			updata_solution(std);
-			add_ce_info(std);
+			std.init_real_info();
 			std.acflag=OJ_CE;
+			mysql_add_ce_info(std);
+			printf("ceinfo\n");
 			//输出ce信息到数据库
 		}
-		std.debug_show_real_info();
+		printf("solution_id:%d\nresult:%d\n",std.run_id,std.acflag);
+		if(std.contest_id){
+			//比赛里的题
+			mysql_update_contest_user_rank(std);
+		}
+		else{
+			//大题库里
+			//需要修改problem的AC等信息
+			mysql_add_problem_info(std);
+		}
+		mysql_update_solution(std);
+		printf("而处恭\n");
 	}
 	return 0;
 }

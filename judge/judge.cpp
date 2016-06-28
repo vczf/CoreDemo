@@ -67,7 +67,19 @@ char WORK_DIR[JUDGE_CLIENT_NUM][BUFFER_SIZE];
 char PIPE_DIR[JUDGE_CLIENT_NUM][BUFFER_SIZE];
 int PIPE_FP[JUDGE_CLIENT_NUM];
 int CLIENT_PID[JUDGE_CLIENT_NUM];
+int CLIENT_RUN_FOR_ID[JUDGE_CLIENT_NUM];
 int DEBUG;
+void mysql_rejudge(int run_id){
+	char tmp[1024];
+	sprintf(tmp,"update solution_info set result=1 where solution_id=%d",run_id);
+	mysqlpp::Query query= conn.query(tmp);
+	mysqlpp::SimpleResult ans = query.execute();
+	if(!ans){
+		printf("更改错误,run_id=%d\n",run_id);
+		exit(0);
+	}
+}
+
 void call_for_exit(){
 	int i;
 	printf("stop\n正在关闭子进程....\n");
@@ -158,11 +170,15 @@ int get_free_client(){
 		if(CLIENT_PID[ID]==-1){
 			create_client(ID);
 		}
-		else if(WIFSTOPPED(status)){
-			if(DEBUG){
-				printf("get_id:%d\n",ID);
-			}
+		/*else if(WIFEXITED(status)){
+			if(CLIENT_RUN_FOR_ID[i]!=-1)
+				mysql_rejudge(CLIENT_RUN_FOR_ID[ID]);
+			create_client(ID);
+			CLIENT_RUN_FOR_ID[ID]=-1;
 
+		}*/
+		else if(WIFSTOPPED(status)){
+			CLIENT_RUN_FOR_ID[ID]=-1;
 			return ID;			
 		}
 		ID++;
@@ -174,11 +190,17 @@ struct solution_info{
 	int run_id;
 	int problem_id;
 	int lang;
+	int contest_id;
+	char user_name[BUFFER_SIZE];
+	char in_date[BUFFER_SIZE];
 	void read(char *buff){
-		sscanf(buff,"%d%d%d",&run_id,&problem_id,&lang);
+		char t[2][32];
+		sscanf(buff,"%s%s%s%d%d%d%d",t[0],t[1],user_name,&run_id,&problem_id,&lang,&contest_id);
+		sprintf(in_date,"%s %s",t[0],t[1]);
 	}
+
 	void write(char *buff){
-		sprintf(buff,"%d %d %d\n",run_id,problem_id,lang);
+		sprintf(buff,"%s %s %d %d %d %d\n",in_date,user_name,run_id,problem_id,lang,contest_id);
 	}
 }; 
 void send_solution_info(int id,solution_info &info){
@@ -191,6 +213,8 @@ void send_solution_info(int id,solution_info &info){
 	info.write(tmp);
 	rs = write(PIPE_FP[id],tmp,strlen(tmp));
 	kill(CLIENT_PID[id],SIGCONT);
+	printf("wait...\n");
+	CLIENT_RUN_FOR_ID[id]=info.run_id;
 }
 int after_equal(char *c){
 	int i;
@@ -238,11 +262,15 @@ void init_db_info(){
 		read_int(buf,"OJ_SLEEP_TIME",&oj_sleep_time);
 		read_int(buf,"OJ_CLIENT_NUM",&oj_client_num);
 	}
-	sprintf(get_some_solution_info,"SELECT solution_id,problem_id,language FROM solution_info WHERE result=0");
+	sprintf(get_some_solution_info,"SELECT in_date,user_name,solution_id,problem_id,language,contest_id FROM solution_info WHERE result<2");
 }
 void init_mysql(){
+	printf("开始连接了\n");
 	conn.set_option(new mysqlpp::SetCharsetNameOption("utf8"));
-	conn.connect(db_name,db_address,db_user,db_password);
+	if(!conn.connect(db_name,db_address,db_user,db_password)){
+		printf("连接失败啦!\n");
+		exit(0);
+	}
 	conn.query("SET NAMES utf8");
 }
 void get_some_solution(std::queue<solution_info> &q){
@@ -252,7 +280,7 @@ void get_some_solution(std::queue<solution_info> &q){
 	mysqlpp::StoreQueryResult::const_iterator it;
 	for(it = res.begin(); it != res.end();++it){
 		mysqlpp::Row row = *it;
-		sprintf(buf,"%s %s %s",row[0].data(),row[1].data(),row[2].data());
+		sprintf(buf,"%s %s %s %s %s %s",row[0].data(),row[1].data(),row[2].data(),row[3].data(),row[4].data(),row[5].data());
 		printf("已获得:%s\n",buf);
 		solution_info tmp;
 		tmp.read(buf);
@@ -283,7 +311,6 @@ int main(){
 			do{
 				id=get_free_client();
 			}while(id==-1);
-			printf("开始发送了吗\n");
 			send_solution_info(id,t);
 		}
 		sleep(oj_sleep_time);
