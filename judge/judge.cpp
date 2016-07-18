@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <string.h>
+#include <ctype.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <stdlib.h>
@@ -12,8 +13,8 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <algorithm>
-#include <mysql++.h>
 #include <queue>
+#include <mysql/mysql.h>
 #define STD_MB 1048576
 #define STD_T_LIM 2
 #define STD_F_LIM (STD_MB<<5)
@@ -59,7 +60,7 @@ char db_address[BUFFER_SIZE];
 char get_some_solution_info[BUFFER_SIZE];
 int oj_client_num=0;
 int oj_sleep_time=10;
-mysqlpp::Connection conn;
+MYSQL *conn;
 
 #define JUDGE_CLIENT_NUM 10 
 char OJ_HOME[BUFFER_SIZE];
@@ -69,6 +70,7 @@ int PIPE_FP[JUDGE_CLIENT_NUM];
 int CLIENT_PID[JUDGE_CLIENT_NUM];
 int CLIENT_RUN_FOR_ID[JUDGE_CLIENT_NUM];
 int DEBUG;
+/*
 void mysql_rejudge(int run_id){
 	char tmp[1024];
 	sprintf(tmp,"update solution_info set result=1 where solution_id=%d",run_id);
@@ -79,6 +81,7 @@ void mysql_rejudge(int run_id){
 		exit(0);
 	}
 }
+*/
 
 void call_for_exit(){
 	int i;
@@ -264,17 +267,26 @@ void init_db_info(){
 	}
 	sprintf(get_some_solution_info,"SELECT in_date,user_name,solution_id,problem_id,language,contest_id FROM solution_info WHERE result<2");
 }
+
 void init_mysql(){
-	printf("开始连接了\n");
-	conn.set_option(new mysqlpp::SetCharsetNameOption("utf8"));
-	if(!conn.connect(db_name,db_address,db_user,db_password)){
-		printf("连接失败啦!\n");
+	conn = mysql_init(NULL);
+	if(!mysql_real_connect(conn,db_address,db_user,db_password,db_name,3306,NULL,0)){
+		printf("connect fail\n");
 		exit(0);
 	}
-	conn.query("SET NAMES utf8");
+    	const char * utf8sql = "set names utf8";
+	if (mysql_real_query(conn, utf8sql, strlen(utf8sql)))
+	{
+
+        exit(0);
+	}
 }
+
 void get_some_solution(std::queue<solution_info> &q){
 	char buf[BUFFER_SIZE];
+	MYSQL_RES *res;
+	MYSQL_ROW row;
+	/*
 	mysqlpp::Query query= conn.query(get_some_solution_info);
 	mysqlpp::StoreQueryResult res = query.store();
 	mysqlpp::StoreQueryResult::const_iterator it;
@@ -286,6 +298,16 @@ void get_some_solution(std::queue<solution_info> &q){
 		tmp.read(buf);
 		q.push(tmp);
 	}
+	*/
+	mysql_real_query(conn,get_some_solution_info,strlen(get_some_solution_info));
+	res = mysql_store_result(conn);
+	while(row=mysql_fetch_row(res),row!=NULL){
+		sprintf(buf,"%s %s %s %s %s %s",row[0],row[1],row[2],row[3],row[4],row[5]);
+		solution_info tmp;
+		tmp.read(buf);
+		q.push(tmp);
+	}
+	mysql_free_result(res);
 }
 int main(){
 	int i;
