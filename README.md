@@ -4,6 +4,14 @@
 _ _ _ _ _ _
 
 # 手动安装
+## 安装数据库
+在终端内
+```
+sudo apt-get install mysql-server mysql-client
+sudo apt-get install libmysqlclient15-dev
+```
+
+_ _ _ _ _ _
 
 ## 创建数据库
 mysql 
@@ -13,17 +21,23 @@ use zhbitoj;
 source db.sql
 ```
 
+_ _ _ _ _ _
+
 ### 自行创建管理员
 *请先在web页面注册一个普通用户*
 ```
 update user_info set role=3 where user_name='admin';
-
 ```
 
+
+_ _ _ _ _ _
 ## 添加判题用户
+
 ```
 useradd --uid 2333 judge
 ```
+
+_ _ _ _ _ _
 
 ## 创建对应目录
 ```
@@ -52,6 +66,7 @@ OJ_SLEEP_TIME=1         #如果没有需要judge的记录时等待多久单位�
 OJ_CLIENT_NUM=1         #判题机数量 默认1 因为还有bug,所以只能1
 ```
 编辑完毕后将注释信息删除
+
 
 
 
