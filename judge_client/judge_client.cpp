@@ -325,14 +325,17 @@ void set_run_info(proc_info &info){
 	//进程数目
 	///////初期我只打算做c++跟c，所以后面的活你们加油！
 }
-int compile(int lang ){
-	int pid;
+int compile(proc_info &std){
+	int pid,lang;
+	lang=std.lang;
 	pid = fork();
 	if(pid==0){
 		//子进程
 		alarm(5);
 		//限制10秒编译时间
 		//编译超时会发信号
+		chdir(std.work_dir);
+		chroot(std.work_dir);
 		set_compile_info();
 		freopen("ce.txt","w",stderr);
 		execvp(CP_SELECT[lang][0],(char * const *)CP_SELECT[lang]);
@@ -371,7 +374,6 @@ int run_solution(proc_info &info){
 	chmod("error.out",777);
 	chroot(info.work_dir);
 	nice(19);
-	
 	int tmp;
 	while(tmp = setgid(2333),tmp!=0)sleep(1);
 	while(tmp = setuid(2333),tmp!=0)sleep(1);
@@ -685,7 +687,7 @@ int main(int argc , char ** argv){
 		init_systemcall_count(std.lang);
 		pid_t p_id;
 		get_solution(std);
-		compile_ok = compile(std.lang);
+		compile_ok = compile(std);
 		if(!compile_ok){
 			mysql_change_result(std.run_id,OJ_RI);
 			p_id = fork();

@@ -45,7 +45,8 @@ mkdir /home/judge/
 mkdir /home/judge/etc/
 mkdir /home/judge/data/
 mkdir /home/judge/run0/
-mkdir /home/judge/log
+mkdir /home/judge/log/
+mkdir /home/judge/pipe/
 ```
 目前默认只有一个判题机,所以只需要创建一个run0,如果要多个判题机,比如说需要2个,则创建/home/judge/run0 和/home/judge/run1 目录
 

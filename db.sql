@@ -29,7 +29,7 @@ CREATE TABLE `contest_info` (
   `end_time` datetime DEFAULT '2000-00-00 00:00:00',
   `mode` int(11) DEFAULT '1',
   PRIMARY KEY (`contest_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;
 
 DROP TABLE IF EXISTS `contest_player`;
 CREATE TABLE `contest_player` (
