@@ -331,8 +331,7 @@ int compile(proc_info &std){
 	pid = fork();
 	if(pid==0){
 		//子进程
-		alarm(5);
-		//限制10秒编译时间
+		alarm(60);
 		//编译超时会发信号
 		chdir(std.work_dir);
 		chroot(std.work_dir);
