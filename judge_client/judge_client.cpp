@@ -14,66 +14,23 @@
 #include <sys/resource.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
-#include "okcalls.h"
 #include <fcntl.h>
 #include <algorithm>
 #include <mysql/mysql.h>
-#define STD_MB 1048576
-#define STD_T_LIM 2
-#define STD_F_LIM (STD_MB<<8)
-#define STD_M_LIM (STD_MB<<7)
-#define BUFFER_SIZE 1024 
+#include "okcalls.h"
+#include "../include/judge_define.h"
 
-#define OJ_WT0 0
-#define OJ_WT1 1
-#define OJ_CI 2
-#define OJ_RI 3
-#define OJ_AC 4
-#define OJ_PE 5
-#define OJ_WA 6
-#define OJ_TL 7
-#define OJ_ML 8
-#define OJ_OL 9
-#define OJ_RE 10
-#define OJ_CE 11
-#define OJ_RE_SO 12
-//StackOverFLOW
-#define OJ_DBZ 13
-//DIVIDE_BY_ZERO
-#define OJ_AV 14
-//ACCESS_VIOLATION
 
-#ifdef __i386
-#define REG_SYSCALL orig_eax
-#define REG_RET eax
-#define REG_ARG0 ebx
-#define REG_ARG1 ecx
-#else
-#define REG_SYSCALL orig_rax
-#define REG_RET rax
-#define REG_ARG0 rdi
-#define REG_ARG1 rsi
-#endif
 
-//db_info
 char db_name[BUFFER_SIZE];
 char db_user[BUFFER_SIZE];
 char db_password[BUFFER_SIZE];
 char db_address[BUFFER_SIZE];
-//mysqlpp::Connection conn;
 MYSQL *conn;
-/*
-copy from hustoj
-https://github.com/zhblue/hustoj/blob/master/beta/core/judge_client/judge_client.cc
-*/
-//编译限制 通过读配置文件得到
-//暂时写死
+
 int COMPILE_TIME=60;//秒
 int COMPILE_FSIZE=128*STD_MB;//字节
 int COMPILE_MSIZE=64*STD_MB;//使用内存 单位字节
-
-int Debug=0;
-
 const char * mysql_field[]={
 	"","","","",
 	"AC","PE","WA",
@@ -109,7 +66,6 @@ long get_file_size(const char * filename){
 	if (stat(filename, &f_stat) == -1)
         return 0;
     return (long) f_stat.st_size;
-
 }
 struct proc_info{
 	pid_t pid;//进程pid
@@ -334,7 +290,6 @@ int compile(proc_info &std){
 		alarm(60);
 		//编译超时会发信号
 		chdir(std.work_dir);
-		chroot(std.work_dir);
 		set_compile_info();
 		freopen("ce.txt","w",stderr);
 		execvp(CP_SELECT[lang][0],(char * const *)CP_SELECT[lang]);
@@ -397,7 +352,7 @@ int watch_solution(proc_info &std){
 		std.real_time += (ruse.ru_stime.tv_sec * 1000 + ruse.ru_stime.tv_usec / 1000);
 		if(std.judge_memory()){std.kill_proc(); break;}
 		if(std.judge_time()){std.kill_proc(); break;}
-		//if(std.judge_outputsize()){std.kill_proc(); break;}		
+		if(std.judge_outputsize()){std.kill_proc(); break;}		
 		if(WIFEXITED(status)) break;
 		if(std.acflag!=OJ_AC){std.kill_proc();break;}
 		exitcode = WEXITSTATUS(status);
