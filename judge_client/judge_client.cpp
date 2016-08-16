@@ -119,16 +119,6 @@ struct proc_info{
 		sprintf(user_out,"%suser.out",work_dir);
 		outputsize=get_file_size(data_out);
 		char buf[BUFFER_SIZE];
-//		char tmp[BUFFER_SIZE];
-//		sprintf(tmp,"SELECT time_limit,memory_limit FROM problem_info WHERE problem_id=%d",problem_id);
-//		MYSQL_RES *res;
-//		MYSQL_ROW row;
-//		mysql_real_query(conn,tmp,strlen(tmp));
-//		printf("查询失败了?\n");
-//		res=mysql_store_result(conn);
-//		row = mysql_fetch_row(res);
-//		sprintf(buf,"%s %s",row[0],row[1]);
-//		mysql_free_result(res);
 		conn.query("SELECT time_limit,memory_limit FROM problem_info WHERE problem_id=%d",problem_id);
 		if(!conn.has_next()){
 			Log.write("line %d:select fail",__LINE__);
@@ -432,20 +422,6 @@ int judge_solution(proc_info &std){
 	std.acflag=compare_pe(std.data_out,std.user_out);
 }
 bool get_solution(proc_info &std){
-//	char buf[BUFFER_SIZE];
-//	char tmp[BUFFER_SIZE];
-//	char src_path[BUFFER_SIZE];
-//	sprintf(tmp,"select source from source_code where solution_id=%d",std.run_id);
-//	MYSQL_RES *res;
-//	MYSQL_ROW row;
-//	mysql_real_query(conn,tmp,strlen(tmp));
-//	res = mysql_store_result(conn);
-//	row = mysql_fetch_row(res);
-//	FILE *fp = fopen(src_path,"w");
-//	fprintf(fp,"%s",row[0]);
-//	fclose(fp);
-//	mysql_free_result(res);
-//	;
 	char src_path[BUFFER_SIZE];
 	sprintf(src_path,"Main.%s",LANG_EXT[std.lang]);
 	conn.query("select source from source_code where solution_id=%d",std.run_id);
@@ -511,17 +487,6 @@ void init_mysql(){
 	}
 }
 void mysql_update_problem_info(proc_info &std,bool is_ac ){
-//	char tmp[BUFFER_SIZE];
-//	MYSQL_RES *res;
-//	MYSQL_ROW row;
-//	sprintf(tmp,"update problem_info set %s=%s+1 , submit=submit+1 where problem_id=%d",mysql_field[std.acflag],mysql_field[std.acflag],std.problem_id);
-//	printf("%s\n",tmp);
-//	mysql_real_query(conn,tmp,strlen(tmp));
-//	if(!is_ac && std.acflag==OJ_AC){
-//		printf("gg3\n");
-//		sprintf(tmp,"update problem_info set solve=solve+1 where problem_id=%d",std.problem_id);
-//		mysql_real_query(conn,tmp,strlen(tmp));
-//	}
 	conn.query("update problem_info set %s=%s+1 , submit=submit+1 where problem_id=%d",mysql_field[std.acflag],mysql_field[std.acflag],std.problem_id);
 	if(!is_ac && std.acflag==OJ_AC){
 		conn.query("update problem_info set solve=solve+1 where problem_id=%d",std.problem_id);
@@ -529,51 +494,25 @@ void mysql_update_problem_info(proc_info &std,bool is_ac ){
 
 }
 void mysql_add_problem_info(proc_info &std){
-//	MYSQL_RES *res;
-//	MYSQL_ROW row;
-//	char tmp[BUFFER_SIZE];
-//	sprintf(tmp,"select * from solution_info where user_name='%s' and problem_id=%d and contest_id=0 and result=%d ",std.user_name,std.problem_id,OJ_AC);
-//	printf("add:语句:%s\n",tmp);
-//	mysql_real_query(conn,tmp,strlen(tmp));
-//	res=mysql_store_result(conn);
-//	mysql_free_result(res);
-//	mysql_update_problem_info(std,mysql_affected_rows(conn)>0);
 	conn.query("select * from solution_info where user_name='%s' and problem_id=%d and contest_id=0 and result=%d ",std.user_name,std.problem_id,OJ_AC);
 	mysql_update_problem_info(std,conn.num_rows()>0);
 
 
 }
 void mysql_update_solution(proc_info &std){
-	//	MYSQL_RES *res;
-	//	MYSQL_ROW row;
-	//	char tmp[BUFFER_SIZE];
-	//	sprintf(tmp,"update solution_info set run_time=%d,run_memory=%d,result=%d where solution_id = %d",std.real_time,std.real_memory,std.acflag,std.run_id);
-	//	mysql_real_query(conn,tmp,strlen(tmp));
 	conn.query("update solution_info set run_time=%d,run_memory=%d,result=%d where solution_id = %d",std.real_time,std.real_memory,std.acflag,std.run_id);
 }
 
 void mysql_add_ce_info(proc_info &std){
 	char ceinfo[(1<<16)],*cend;
 	FILE *fp = fopen("ce.txt","r");
-//	MYSQL_RES *res;
-//	MYSQL_ROW row;
 	char tmp[BUFFER_SIZE];
 	cend=ceinfo;
-//	sprintf(tmp,"delete from compile_info where solution_id=%d",std.run_id);
-//	mysql_real_query(conn,tmp,strlen(tmp));
 	conn.query("delete from compile_info where solution_id=%d",std.run_id);
 	while(fgets(cend,1024,fp)){
 		cend+=strlen(cend);
 		if(cend-ceinfo>2048)break;
 	}
-//	sprintf(tmp,"INSERT INTO compile_info (solution_id,error) VALUES(%d,",std.run_id);
-//	cend=tmp+strlen(tmp);
-//	*cend++ = '\'';
-//    cend += mysql_real_escape_string(conn,cend, ceinfo, strlen(ceinfo));
-//    *cend++ = '\'';
-//    *cend++ = ')';
-//	*cend = 0;
-//	mysql_real_query(conn,tmp,strlen(tmp));
 	conn.query("INSERT INTO compile_info (solution_id,error) VALUES(%d,'%s')",std.run_id,conn.escape_string(tmp,ceinfo,strlen(ceinfo) ));
 
 }
@@ -581,55 +520,22 @@ void mysql_change_result(int run_id,int result){
 	conn.query("update solution_info set result=%d where solution_id=%d",result,run_id);
 }
 bool mysql_insert_contest_rank_user(proc_info &std){
-//	MYSQL_RES *res;
-//	MYSQL_ROW row;
-//	char tmp[BUFFER_SIZE];
-//	sprintf(tmp,"insert into contest_rank_info (in_date,contest_id,problem_id,user_name,submit) values(null,%d,%d,'%s',0)",std.contest_id,std.problem_id,std.user_name);
-//	mysql_real_query(conn,tmp,strlen(tmp));
-//	res=mysql_store_result(conn);
-//	mysql_free_result(res);
 	conn.query("insert into contest_rank_info (in_date,contest_id,problem_id,user_name,submit) values(null,%d,%d,'%s',0)",std.contest_id,std.problem_id,std.user_name);
 	return true;
 }
 bool mysql_check_contest_rank_is_hava(proc_info &std){
-//	char tmp[BUFFER_SIZE];
-//	MYSQL_RES *res;
-//	MYSQL_ROW row;
-//	sprintf(tmp,"select * from contest_rank_info where user_name='%s' and problem_id=%d and contest_id=%d",std.user_name,std.problem_id,std.contest_id);
-//	mysql_real_query(conn,tmp,strlen(tmp));
-//	res=mysql_store_result(conn);
-//	mysql_free_result(res);
-//	printf("确定有没有:%d\n",mysql_affected_rows(conn));
 	conn.query("select * from contest_rank_info where user_name='%s' and problem_id=%d and contest_id=%d",std.user_name,std.problem_id,std.contest_id);
 	return conn.num_rows()>0;
 }
 void mysql_update_contest_user_rank(proc_info &std){
-//	char tmp[BUFFER_SIZE];
-//	MYSQL_RES *res;
-//	MYSQL_ROW row;
-//	if(!mysql_check_contest_rank_is_hava(std))
-//		mysql_insert_contest_rank_user(std);
-//	printf("runid:%d,result:%d\nac.size()=%d\n",std.run_id,std.acflag,1);
-//	sprintf(tmp,"select problem_id from contest_rank_info where in_date is null and  user_name='%s' and problem_id=%d and contest_id=%d ",std.user_name,std.problem_id,std.contest_id);
-//	mysql_real_query(conn,tmp,strlen(tmp));
-//	printf("确定多少被更改:%d\n",mysql_affected_rows(conn));
-//	printf("%s\n",tmp);
 	conn.query("select problem_id from contest_rank_info where in_date is null and  user_name='%s' and problem_id=%d and contest_id=%d ",std.user_name,std.problem_id,std.contest_id);
 	if(!mysql_check_contest_rank_is_hava(std))
 		mysql_insert_contest_rank_user(std);
-//	if(mysql_affected_rows(conn)!=0){
 	if(conn.num_rows()!=0){
-//		res=mysql_store_result(conn);
-//		mysql_free_result(res);
-		 //没有通过过
 		if(std.acflag==OJ_AC){
-//			sprintf(tmp,"update contest_rank_info SET in_date='%s' where contest_id=%d and problem_id=%d  and user_name='%s';",std.in_date,std.contest_id,std.problem_id,std.user_name);
-//			mysql_real_query(conn,tmp,strlen(tmp));
 			conn.query("update contest_rank_info SET in_date='%s' where contest_id=%d and problem_id=%d  and user_name='%s';",std.in_date,std.contest_id,std.problem_id,std.user_name);
 		}
 		else{
-//			sprintf(tmp,"update contest_rank_info SET submit=submit+1 where contest_id=%d and problem_id=%d and in_date is null and user_name='%s';",std.contest_id,std.problem_id,std.user_name);
-//			mysql_real_query(conn,tmp,strlen(tmp));
 			conn.query("update contest_rank_info SET submit=submit+1 where contest_id=%d and problem_id=%d and in_date is null and user_name='%s';",std.contest_id,std.problem_id,std.user_name);
 		} 
 	}

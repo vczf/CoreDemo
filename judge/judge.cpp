@@ -238,18 +238,6 @@ void init_mysql(){
 	}
 }
 void get_some_solution(std::queue<solution_info> &q){
-//	char buf[BUFFER_SIZE];
-//	MYSQL_RES *res;
-//	MYSQL_ROW row;
-//	mysql_real_query(conn,GET_SOME_SOLUTION_INFO,strlen(GET_SOME_SOLUTION_INFO));
-//	res = mysql_store_result(conn);
-//	while(row=mysql_fetch_row(res),row!=NULL){
-//		sprintf(buf,"%s %s %s %s %s %s",row[0],row[1],row[2],row[3],row[4],row[5]);
-//		solution_info tmp;
-//		tmp.read(buf);
-//		q.push(tmp);
-//	}
-//	mysql_free_result(res);
 	char buf[BUFFER_SIZE];
 	conn.query(GET_SOME_SOLUTION_INFO);
 	while(conn.has_next()){
