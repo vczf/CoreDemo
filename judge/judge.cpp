@@ -17,6 +17,7 @@
 #include <mysql/mysql.h>
 #include "../include/judge_define.h"
 #include "../include/judge_log.h"
+#include "../include/judge_db.h"
 
 char DB_NAME[BUFFER_SIZE];
 char DB_USER[BUFFER_SIZE];
@@ -27,7 +28,7 @@ int oj_client_num=1;
 int oj_sleep_time=10;
 log::log Log;
 int DEBUG=0;
-MYSQL *conn;
+db::db conn;
 
 #define JUDGE_CLIENT_NUM 10 
 char OJ_HOME[BUFFER_SIZE];
@@ -67,9 +68,18 @@ void create_client(int id){
 		char tmp[100];
 		sprintf(tmp,"%d",id);
 		Log.write("正在创建judge%d号",id);
-		if(-1==execl("/usr/bin/judge_client",OJ_HOME,WORK_DIR[id],PIPE_DIR[id],tmp,(char *)NULL)){
-			Log.write("创建judge%d号失败",id);
-			exit(0);
+		if(DEBUG){
+			if(-1==execl("/usr/bin/judge_client",OJ_HOME,WORK_DIR[id],PIPE_DIR[id],tmp,"DEBUG",(char *)NULL)){
+				Log.write("创建judge%d号失败",id);
+				exit(0);
+			}
+		}
+		else{
+			if(-1==execl("/usr/bin/judge_client",OJ_HOME,WORK_DIR[id],PIPE_DIR[id],tmp,(char *)NULL)){
+				Log.write("创建judge%d号失败",id);
+				exit(0);
+			}
+
 		}
 	}
 	else{
@@ -217,38 +227,46 @@ void init_db_info(){
 	sprintf(GET_SOME_SOLUTION_INFO,"SELECT in_date,user_name,solution_id,problem_id,language,contest_id FROM solution_info WHERE result<2");
 }
 void init_mysql(){
-	if(conn==NULL){
-		conn = mysql_init(NULL);
-		if(!mysql_real_connect(conn,DB_ADDRESS,DB_USER,DB_PASSWORD,DB_NAME,3306,NULL,0)){
-			Log.write("连接失败,请检查配置文件");
-			exit(0);
-		}
+	conn.init(DB_ADDRESS,DB_USER,DB_PASSWORD,DB_NAME,3306,NULL,0);
+	if(!conn.connect()){
+		Log.write("conn fails");
+		exit(0);
 	}
-    const char * utf8sql = "set names utf8";
-	if (mysql_real_query(conn, utf8sql, strlen(utf8sql)))
-	{
-        exit(0);
+	if(conn.set_character_set("utf8")){
+		Log.write(conn.get_error());
+		exit(0);
 	}
 }
 void get_some_solution(std::queue<solution_info> &q){
+//	char buf[BUFFER_SIZE];
+//	MYSQL_RES *res;
+//	MYSQL_ROW row;
+//	mysql_real_query(conn,GET_SOME_SOLUTION_INFO,strlen(GET_SOME_SOLUTION_INFO));
+//	res = mysql_store_result(conn);
+//	while(row=mysql_fetch_row(res),row!=NULL){
+//		sprintf(buf,"%s %s %s %s %s %s",row[0],row[1],row[2],row[3],row[4],row[5]);
+//		solution_info tmp;
+//		tmp.read(buf);
+//		q.push(tmp);
+//	}
+//	mysql_free_result(res);
 	char buf[BUFFER_SIZE];
-	MYSQL_RES *res;
-	MYSQL_ROW row;
-	mysql_real_query(conn,GET_SOME_SOLUTION_INFO,strlen(GET_SOME_SOLUTION_INFO));
-	res = mysql_store_result(conn);
-	while(row=mysql_fetch_row(res),row!=NULL){
-		sprintf(buf,"%s %s %s %s %s %s",row[0],row[1],row[2],row[3],row[4],row[5]);
+	conn.query(GET_SOME_SOLUTION_INFO);
+	while(conn.has_next()){
+		sprintf(buf,"%s %s %s %s %s %s",conn[0],conn[1],conn[2],conn[3],conn[4],conn[5]);
+		
 		solution_info tmp;
 		tmp.read(buf);
 		q.push(tmp);
+
 	}
-	mysql_free_result(res);
 }
 int main(int args,char **argc){
 	int i;
 	char tmp[BUFFER_SIZE];
-	if(args>1&&strcmp(argc[1],"DEBUG")==0){
+	if(strcmp(argc[args-1],"DEBUG")==0){
 		Log.set(0);
+		DEBUG=1;
 	}
 	else{
 		sprintf(tmp,"/home/judge/log/judge_");
@@ -258,6 +276,7 @@ int main(int args,char **argc){
 			else if(tmp[i]==':')tmp[i]='_';
 		tmp[strlen(tmp)-2]=0;
 		Log.set(1,tmp);
+		DEBUG=0;
 	}
 	std::queue<solution_info> q;
 	for(i=0;i<JUDGE_CLIENT_NUM;++i)

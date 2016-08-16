@@ -1,5 +1,4 @@
 #ifndef ___judge_define
-
 #define ___judge_define
 #define STD_MB 1048576
 #define STD_T_LIM 2

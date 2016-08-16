@@ -1,6 +1,8 @@
+#ifndef JUDGE_LOG_CPP
+#define JUDGE_LOG_CPP
 #include "judge_log.h"
-using namespace log;
-log::int get_system_time(char *tmp,int n){
+const char log::log::time_template[128]="date +%Y-%m-%d\\ %H:%M:%S";
+int log::log::get_system_time(char *tmp,int n){
 	int len;
 	tp = popen(time_template,"r");
 	len=fread(tmp,sizeof(char),sizeof(char)*n,tp);
@@ -9,37 +11,32 @@ log::int get_system_time(char *tmp,int n){
 	tmp[++len]=0;
 	return len;
 }
-log::void set(int m,const char* t=NULL){
+void log::log::set(int m,const char* t){
 	assert(m<=1);
 	if(m==0||t==NULL){
 		mod=0;
-		if(fp!=NULL){
-			fclose(fp);
-			fp=NULL;
-		}
 	}
 	else if(m==1){
-		if(fp!=NULL){
-			fclose(fp);
-			fp=NULL;
-		}
+		memset(write_dir,0,sizeof(write_dir));
+		sprintf(write_dir,"%s",t);
+		fp=fopen(write_dir,"a+");
+		setvbuf(fp,buff,_IOLBF,2048);
 		mod=1;
-		fp=fopen(t,"a+");
 	}
 }
-log::log():mod(0){//written to the console
+log::log::log():mod(0){//written to the console
 }
-log::log(const char* tmp):mod(1){//written to the file
+log::log::log(const char* tmp):mod(1){//written to the file
 	fp=NULL;
-	fp=fopen(tmp,"a+");
+	fp=fopen(tmp,"a");
 }
-log::~log(){
+log::log::~log(){
 	if(fp)
 		fclose(fp);
 	if(tp)
 		pclose(tp);
 }
-log::void write(const char* fmt, ... ){
+void log::log::write(const char* fmt, ... ){
 	char *tmp;
 	va_list ap;
 	va_start(ap,fmt);
@@ -48,12 +45,13 @@ log::void write(const char* fmt, ... ){
 	vsprintf(tmp,fmt,ap);
 	va_end(ap);
 	tmp+=strlen(tmp);
-	*tmp='\n';
-	if(mod)
-		fprintf(fp,buffer,NULL);
+	*tmp++='\n';
+	*tmp=0;
+	if(mod){
+		fprintf(fp,buffer);
+	}
 	else
-		printf(buffer,NULL);
+		printf(buffer);
 	return ;
 }
-log::const char log::time_template[128]="date +%Y-%m-%d\\ %H:%M:%S";
-	
+#endif	

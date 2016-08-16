@@ -3,7 +3,7 @@ void db::db::char_cp(char *t,const char *p){
 	if(p!=NULL)
 		strcpy(t,p);
 	else
-		memset(t,0,sizeof(char)*BUFFER_SIZE);
+		memset(t,0,sizeof(char)*_BUFFER_SIZE);
 }
 const char* db::db::conn_parameter(const char *t){
 	if(t[0])
@@ -28,13 +28,16 @@ void db::db::set_retry(int t ){
 }
 void db::db::check_buffer(){
 	if(NULL==STATEMENTS_BUFFER){
-		STATEMENTS_BUFFER=new char[2*BUFFER_SIZE];
-		STATEMENTS_BUFFER_SIZE=2*BUFFER_SIZE;
+		STATEMENTS_BUFFER=new char[2*_BUFFER_SIZE];
+		STATEMENTS_BUFFER_SIZE=2*_BUFFER_SIZE;
 		IS_DEFAULT_BUFFER=true;
 	}
 }
 unsigned int db::db::field_count(){
 	return mysql_field_count(&CONN);
+}
+int db::db::num_rows(){
+	return ROWS;
 }
 void db::db::set_buffer(char *t , int size){
 	if(STATEMENTS_BUFFER!=NULL && IS_DEFAULT_BUFFER){
@@ -157,6 +160,7 @@ bool db::db::query(const char * fmt, ... ){
 	va_start(ap, fmt);
 	length=vsnprintf(STATEMENTS_BUFFER,STATEMENTS_BUFFER_SIZE, fmt, ap);
 	va_end(ap);
+	free_result();
 	if(length<0) return false;
 	do{
 		result=mysql_real_query(&CONN,STATEMENTS_BUFFER,length);
@@ -164,7 +168,6 @@ bool db::db::query(const char * fmt, ... ){
 	}while(timeout_judge(result)&&retry_conn(time));
 	if(result)
 		return false;
-	free_result();
 	return get_result();
 }
 bool db::db::success(){

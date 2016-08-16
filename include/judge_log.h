@@ -8,7 +8,9 @@ namespace log{
 	#include <cassert>
 	class log{
 		static const char time_template[128];
+		char write_dir[2048];
 		char buffer[2048];
+		char buff[2049];
 		FILE *fp,*tp;
 		int mod;
 		public:
@@ -19,6 +21,5 @@ namespace log{
 		~log();
 		void write(const char* fmt, ... );
 	};
-	const char log::time_template[128]="date +%Y-%m-%d\\ %H:%M:%S";
 };
 #endif
