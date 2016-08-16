@@ -254,7 +254,7 @@ int daemon_init(){
 	if((pid = fork()) < 0) return(-1);
 	else if(pid != 0) exit(0); /* parent exit */
 	setsid(); /* become session leader */
-	chdir(oj_home); /* change working directory */
+	chdir(OJ_HOME); /* change working directory */
 	umask(0); /* clear file mode creation mask */
 	close(0); /* close stdin */
 	close(1); /* close stdout */
