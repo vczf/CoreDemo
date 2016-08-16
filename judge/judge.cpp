@@ -249,6 +249,18 @@ void get_some_solution(std::queue<solution_info> &q){
 
 	}
 }
+int daemon_init(){ 
+	pid_t pid;
+	if((pid = fork()) < 0) return(-1);
+	else if(pid != 0) exit(0); /* parent exit */
+	setsid(); /* become session leader */
+	chdir(oj_home); /* change working directory */
+	umask(0); /* clear file mode creation mask */
+	close(0); /* close stdin */
+	close(1); /* close stdout */
+	close(2); /* close stderr */
+	return(0); 
+}
 int main(int args,char **argc){
 	int i;
 	char tmp[BUFFER_SIZE];
@@ -265,6 +277,7 @@ int main(int args,char **argc){
 		tmp[strlen(tmp)-2]=0;
 		Log.set(1,tmp);
 		DEBUG=0;
+		daemon_init();
 	}
 	std::queue<solution_info> q;
 	for(i=0;i<JUDGE_CLIENT_NUM;++i)
