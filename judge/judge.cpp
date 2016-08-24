@@ -40,7 +40,6 @@ int CLIENT_RUN_FOR_ID[JUDGE_CLIENT_NUM];
 
 void call_for_exit(){
 	int i;
-	printf("stop\n正在关闭子进程....\n");
 	Log.write("正在关闭子进程");
 	for(i = 0 ; i < oj_client_num ;++i){
 		int &tmp = CLIENT_PID[i];
@@ -51,7 +50,6 @@ void call_for_exit(){
 }
 void call_for_exit(int s){
 	int i;
-	printf("stop\n正在关闭子进程....\n");
 	Log.write("正在关闭子进程");
 	for(i = 0 ; i < oj_client_num;++i){
 		int &tmp = CLIENT_PID[i];
@@ -224,7 +222,7 @@ void init_db_info(){
 		read_int(buf,"OJ_SLEEP_TIME",&oj_sleep_time);
 		read_int(buf,"OJ_CLIENT_NUM",&oj_client_num);
 	}
-	sprintf(GET_SOME_SOLUTION_INFO,"SELECT in_date,user_name,solution_id,problem_id,language,contest_id FROM solution_info WHERE result<2");
+	sprintf(GET_SOME_SOLUTION_INFO,"SELECT in_date,user_name,solution_id,problem_id,language,contest_id FROM solution_info WHERE result<2 order by sulution_id asc limit 20");
 }
 void init_mysql(){
 	conn.init(DB_ADDRESS,DB_USER,DB_PASSWORD,DB_NAME,3306,NULL,0);
@@ -284,8 +282,9 @@ int main(int args,char **argc){
 		CLIENT_PID[i]=-1;
 	atexit(call_for_exit);//程序结束之前运行该函数
 	signal(SIGQUIT,call_for_exit);
-	signal(SIGKILL,call_for_exit);
 	signal(SIGTERM,call_for_exit);
+	signal(SIGKILL,call_for_exit);
+	signal(SIGINT,call_for_exit);
 	init_db_info();
 	init_mysql();
 	init_client_info();
