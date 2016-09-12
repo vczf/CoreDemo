@@ -233,6 +233,7 @@ int main(int args,char **argc){
 	while(1){
 		if(mq.get_msg_num()<=2)
 			get_some_solution(mq);
+		rebuild_client();
 		sleep(oj_sleep_time);
 	}
 	return 0;
