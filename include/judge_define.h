@@ -4,7 +4,7 @@
 #define STD_T_LIM 2
 #define STD_F_LIM (STD_MB<<8)
 #define STD_M_LIM (STD_MB<<7)
-#define BUFFER_SIZE 1024 
+#define BUFFER_SIZE 256 
 #define OJ_WT0 0
 #define OJ_WT1 1
 #define OJ_CI 2
@@ -23,6 +23,7 @@
 //DIVIDE_BY_ZERO
 #define OJ_AV 14
 //ACCESS_VIOLATION
+#define LOCAL_DIR "/mq_test"
 
 #ifdef __i386
 #define REG_SYSCALL orig_eax
@@ -35,5 +36,23 @@
 #define REG_ARG0 rdi
 #define REG_ARG1 rsi
 #endif
+
+struct solution_info{
+	int run_id;
+	int problem_id;
+	int lang;
+	int contest_id;
+	char user_name[BUFFER_SIZE];
+	char in_date[BUFFER_SIZE];
+	void read(char *buff){
+		char t[2][32];
+		sscanf(buff,"%s%s%s%d%d%d%d",t[0],t[1],user_name,&run_id,&problem_id,&lang,&contest_id);
+		sprintf(in_date,"%s %s",t[0],t[1]);
+	}
+	void write(char *buff){
+		sprintf(buff,"%s %s %d %d %d %d\n",in_date,user_name,run_id,problem_id,lang,contest_id);
+	}
+
+}; 
 
 #endif

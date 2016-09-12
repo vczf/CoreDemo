@@ -37,7 +37,7 @@ namespace db{
 		unsigned int field_count();
 		void set_buffer(char *t , int size);
 		void set_retry_intervals(int t);
-		bool set_character_set(char *csname);
+		bool set_character_set(const char *csname);
 		char* escape_string(char *to,char* from,unsigned long length);
 		void close();
 		void init( const char * host, const char * user, const char * passwd, const char * db_name, unsigned int port, const char * unix_socket, unsigned long client_flag);

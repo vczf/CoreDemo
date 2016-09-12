@@ -52,7 +52,7 @@ void db::db::set_retry_intervals(int t){
 	if(t>0)
 		RETRY_INTERVALS=t;
 }
-bool db::db::set_character_set(char *csname){
+bool db::db::set_character_set(const char *csname){
 	return mysql_set_character_set(&CONN,csname);
 }
 char* db::db::escape_string(char *to,char* from,unsigned long length){

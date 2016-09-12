@@ -1,6 +1,6 @@
 #ifndef JUDGE_LOG
 #define JUDGE_LOG
-namespace log{
+namespace Log{
 	#include <unistd.h>
 	#include <stdio.h>
 	#include <string.h>

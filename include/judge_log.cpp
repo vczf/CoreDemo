@@ -1,8 +1,8 @@
 #ifndef JUDGE_LOG_CPP
 #define JUDGE_LOG_CPP
 #include "judge_log.h"
-const char log::log::time_template[128]="date +%Y-%m-%d\\ %H:%M:%S";
-int log::log::get_system_time(char *tmp,int n){
+const char Log::log::time_template[128]="date +%Y-%m-%d\\ %H:%M:%S";
+int Log::log::get_system_time(char *tmp,int n){
 	int len;
 	tp = popen(time_template,"r");
 	len=fread(tmp,sizeof(char),sizeof(char)*n,tp);
@@ -11,7 +11,7 @@ int log::log::get_system_time(char *tmp,int n){
 	tmp[++len]=0;
 	return len;
 }
-void log::log::set(int m,const char* t){
+void Log::log::set(int m,const char* t){
 	assert(m<=1);
 	if(m==0||t==NULL){
 		mod=0;
@@ -24,19 +24,19 @@ void log::log::set(int m,const char* t){
 		mod=1;
 	}
 }
-log::log::log():mod(0){//written to the console
+Log::log::log():mod(0){//written to the console
 }
-log::log::log(const char* tmp):mod(1){//written to the file
+Log::log::log(const char* tmp):mod(1){//written to the file
 	fp=NULL;
 	fp=fopen(tmp,"a");
 }
-log::log::~log(){
+Log::log::~log(){
 	if(fp)
 		fclose(fp);
 	if(tp)
 		pclose(tp);
 }
-void log::log::write(const char* fmt, ... ){
+void Log::log::write(const char* fmt, ... ){
 	char *tmp;
 	va_list ap;
 	va_start(ap,fmt);

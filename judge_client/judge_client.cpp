@@ -21,12 +21,13 @@
 #include "../include/judge_define.h"
 #include "../include/judge_db.h"
 #include "../include/judge_log.h"
+#include "../include/judge_queue.h"
 char db_name[BUFFER_SIZE];
 char db_user[BUFFER_SIZE];
 char db_password[BUFFER_SIZE];
 char db_address[BUFFER_SIZE];
 db::db conn;
-log::log Log;
+Log::log w_log;
 
 int COMPILE_TIME=60;//秒
 int COMPILE_FSIZE=128*STD_MB;//字节
@@ -92,7 +93,7 @@ struct proc_info{
 	int real_time;//所耗时间单位毫秒
 	int real_memory;//所耗内存单位kb
 	void debug_show_real_info(){
-		Log.write("run_id:%d result:%s",run_id,mysql_field[acflag]);
+		w_log.write("run_id:%d result:%s",run_id,mysql_field[acflag]);
 	}
 	void init_real_info(){
 		real_time=real_memory=0;
@@ -121,30 +122,22 @@ struct proc_info{
 		char buf[BUFFER_SIZE];
 		conn.query("SELECT time_limit,memory_limit FROM problem_info WHERE problem_id=%d",problem_id);
 		if(!conn.has_next()){
-			Log.write("line %d:select fail",__LINE__);
+			w_log.write("line %d:select fail",__LINE__);
 			return false;
 		}
 		sprintf(buf,"%s %s",conn[0],conn[1]);
 		rs+=sscanf(buf,"%d%d",&time,&memory);	
 		return rs==8;
 	}
-	void get_solution_info(){
-		raise(SIGSTOP);
-		if(pipe_fd==-1)
-			pipe_fd=open(pipe_dir,O_RDONLY);
-		if(pipe_fd==-1){
-			Log.write("open pipe fail");
-			exit(0);
-		}
-		int len = read(pipe_fd,buff,sizeof(buff)-1);
-		Log.write("read:%s",buff);
-		buff[len]=0;
+	void get_solution_info(solution_info &sl){
+		sl.write(buff);
+		w_log.write("read:%s",buff);
 		init_real_info();
 		if(init_problem_info(buff)){
-			Log.write("read problem parameter success");
+			w_log.write("read problem parameter success");
 		}
 		else{
-			Log.write("read problem parameter fail");
+			w_log.write("read problem parameter fail");
 			exit(0);
 		}
 	}
@@ -450,7 +443,7 @@ void trim(char * c){
 	*end='\0';
 	strcpy(c,start);
 }
-int read_buf(char *t , char * key, char *value){
+int read_buf(char *t ,const char * key, char *value){
 	if(strncmp(t,key,strlen(key))==0){
 		strcpy(value,t+after_equal(t));
 		trim(value);
@@ -458,7 +451,7 @@ int read_buf(char *t , char * key, char *value){
 	}
 	return 0;
 }
-int read_int(char *t,char *key , int *value){
+int read_int(char *t,const char *key , int *value){
 	char buf2[BUFFER_SIZE];
 	if(read_buf(t,key,buf2))
 		sscanf(buf2,"%d",value);
@@ -478,11 +471,11 @@ void init_db_info(){
 void init_mysql(){
 	conn.init(db_address,db_user,db_password,db_name,3306,NULL,0);
 	if(!conn.connect()){
-		Log.write("conn fails");
+		w_log.write("conn fails");
 		exit(0);
 	}
 	if(conn.set_character_set("utf8")){
-		Log.write(conn.get_error());
+		w_log.write(conn.get_error());
 		exit(0);
 	}
 }
@@ -545,32 +538,37 @@ void set_log(int client_id){
 	int i;
 	char tmp[BUFFER_SIZE];
 	sprintf(tmp,"/home/judge/log/judge_judge_%d",client_id);
-	Log.get_system_time(tmp+strlen(tmp),BUFFER_SIZE);
+	w_log.get_system_time(tmp+strlen(tmp),BUFFER_SIZE);
 	for(i=0;tmp[i];++i)
 		if(tmp[i]==' ') tmp[i]='_';
 		else if(tmp[i]==':')tmp[i]='_';
 	tmp[strlen(tmp)-2]=0;
-	Log.set(1,tmp);
+	w_log.set(1,tmp);
 }
 int main(int argc , char ** argv){
 	int compile_ok;
 	int i;
 	proc_info std;
+	m_queue mq(LOCAL_DIR);
+	mq.set_flag(O_RDONLY);
+	mq.create(0);
+	solution_info sl;
 	std.init_client_info(argv);
 	if(strcmp(argv[argc-1],"DEBUG")==0)
-		Log.set(0);
+		w_log.set(0);
 	else
 		set_log(std.client_id);;
 	init_db_info();
 	init_mysql();
 	init_compile_systemcall_map();
 	while(1){
-		std.get_solution_info();
+		mq.receive(sl);
+		std.get_solution_info(sl);
 		execute_cmd("rm %s/*",std.work_dir);
 		init_systemcall_count(std.lang);
 		pid_t p_id;
 		if(!get_solution(std)){
-			Log.write("get run_id %d solution fail",std.run_id);
+			w_log.write("get run_id %d solution fail",std.run_id);
 			exit(0);
 		}
 		mysql_change_result(std.run_id,OJ_CI);
@@ -590,16 +588,12 @@ int main(int argc , char ** argv){
 			std.init_real_info();
 			std.acflag=OJ_CE;
 			mysql_add_ce_info(std);
-			//输出ce信息到数据库
 		}
 		std.debug_show_real_info();
 		if(std.contest_id){
-			//比赛里的题
 			mysql_update_contest_user_rank(std);
 		}
 		else{
-			//大题库里
-			//需要修改problem的AC等信息
 			mysql_add_problem_info(std);
 		}
 		mysql_update_solution(std);
