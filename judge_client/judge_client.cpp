@@ -357,6 +357,7 @@ int watch_solution(proc_info &std){
 			SYSTEM_CALLS_COUNT[reg.REG_SYSCALL]--;
 		ptrace(PTRACE_SYSCALL,std.pid,NULL,NULL);
 	}
+	wait4(std.pid,&status,0,&ruse);
 }
 void find_next_nonspace(int &c1,int &c2,FILE *& f1, FILE *&f2){
 	while(isspace(c1)) c1 = fgetc(f1);
