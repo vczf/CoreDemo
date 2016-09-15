@@ -103,11 +103,9 @@ struct proc_info{
 		int i;
 		sscanf(info[0],"%s",oj_home);
 		sscanf(info[1],"%s",work_dir);
-		sscanf(info[2],"%s",pipe_dir);
-		sscanf(info[3],"%d",&client_id);
+		sscanf(info[2],"%d",&client_id);
 		fp=NULL;
 		chdir(work_dir);
-		pipe_fd=open(pipe_dir,O_RDONLY|O_NONBLOCK);
 	}
 	bool init_problem_info(char *buff){
 		int rs;
@@ -169,6 +167,13 @@ struct proc_info{
 		}
 		return false;
 
+	}
+	void update(){
+		switch(acflag){
+			case OJ_TL: real_time=time;return ;
+			case OJ_ML: real_memory=memory;return ;
+		}
+		return ;
 	}
 	void kill_proc(){ptrace(PTRACE_KILL,pid,NULL,NULL);	}
 };
@@ -332,12 +337,14 @@ int watch_solution(proc_info &std){
 		if(exitcode==0x05||exitcode==0);
 		else{
 			std.acflag = get_flag(exitcode);
+			std.update();
 			std.kill_proc();
 			break;
 		}
 	    if (WIFSIGNALED(status)){
 			int sig = WTERMSIG(status);
 			std.acflag = get_flag(sig);
+			std.update();
 		   	std.kill_proc();
 			break;
 		}
@@ -467,6 +474,7 @@ void init_db_info(){
 		read_buf(buf,"DB_USER_NAME",db_user);
 		read_buf(buf,"DB_PASSWORD",db_password);
 	}
+	fclose(fp);
 }
 void init_mysql(){
 	conn.init(db_address,db_user,db_password,db_name,3306,NULL,0);
@@ -507,7 +515,7 @@ void mysql_add_ce_info(proc_info &std){
 		if(cend-ceinfo>2048)break;
 	}
 	conn.query("INSERT INTO compile_info (solution_id,error) VALUES(%d,'%s')",std.run_id,conn.escape_string(tmp,ceinfo,strlen(ceinfo) ));
-
+	fclose(fp);
 }
 void mysql_change_result(int run_id,int result){
 	conn.query("update solution_info set result=%d where solution_id=%d",result,run_id);

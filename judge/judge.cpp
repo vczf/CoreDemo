@@ -70,13 +70,13 @@ void create_client(int id){
 		sprintf(tmp,"%d",id);
 		w_log.write("正在创建judge%d号",id);
 		if(DEBUG){
-			if(-1==execl("/usr/bin/judge_client",OJ_HOME,WORK_DIR[id],PIPE_DIR[id],tmp,"DEBUG",(char *)NULL)){
+			if(-1==execl("/usr/bin/judge_client",OJ_HOME,WORK_DIR[id],tmp,"DEBUG",(char *)NULL)){
 				w_log.write("创建judge%d号失败",id);
 				exit(0);
 			}
 		}
 		else{
-			if(-1==execl("/usr/bin/judge_client",OJ_HOME,WORK_DIR[id],PIPE_DIR[id],tmp,(char *)NULL)){
+			if(-1==execl("/usr/bin/judge_client",OJ_HOME,WORK_DIR[id],tmp,(char *)NULL)){
 				w_log.write("创建judge%d号失败",id);
 				exit(0);
 			}
@@ -88,9 +88,7 @@ void create_client(int id){
 }
 void init_client_info(){
 	int i,j,k;
-	char pipe_tmp[BUFFER_SIZE];
 	sprintf(OJ_HOME,"/home/judge/");//最好通过文件来读
-	sprintf(pipe_tmp,"%spipe/",OJ_HOME);
 	chdir(OJ_HOME);
 	for(i = 0 ; i < oj_client_num;++i){
 		sprintf(WORK_DIR[i],"%srun%d/",OJ_HOME,i);
@@ -163,6 +161,7 @@ void init_db_info(){
 		read_int(buf,"OJ_CLIENT_NUM",&oj_client_num);
 	}
 	sprintf(GET_SOME_SOLUTION_INFO,"SELECT in_date,user_name,solution_id,problem_id,language,contest_id FROM solution_info WHERE result<2 order by solution_id asc limit 20");
+	fclose(fp);
 }
 void init_mysql(){
 	conn.init(DB_ADDRESS,DB_USER,DB_PASSWORD,DB_NAME,3306,NULL,0);

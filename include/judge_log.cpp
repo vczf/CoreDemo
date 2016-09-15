@@ -9,6 +9,8 @@ int Log::log::get_system_time(char *tmp,int n){
 	tmp[--len]=' ';
 	tmp[++len]=':';
 	tmp[++len]=0;
+	pclose(tp);
+	tp=NULL;
 	return len;
 }
 void Log::log::set(int m,const char* t){
