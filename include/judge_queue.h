@@ -16,24 +16,25 @@ class m_queue{
 	int flags;
 	int pathname_size;
 	bool close_flag;
-	char *pathname;
+//	char *pathname;
+	char pathname[4096];
 	public:
 	~m_queue(){
 		mq_close(mqd);
 		if(close_flag)
 			mq_unlink(pathname);
-		if(pathname)
-			free(pathname);
+//		if(pathname)
+//			free(pathname);
 	}
 	void set_unlink_queue(bool t){
 		close_flag=t;
 	}
 	m_queue(){
 		pathname_size=sysconf(_PC_PATH_MAX);
-		pathname=(char *)calloc(pathname_size,sizeof(char));
-		if(NULL==pathname){
-			err_sys("calloc error");
-		}
+	//	pathname=(char *)calloc(pathname_size,sizeof(char));
+	//	if(NULL==pathname){
+	//		err_sys("calloc error");
+	//	}
 		flags=O_RDWR|O_CREAT;
 		attr.mq_maxmsg=100;
 		attr.mq_msgsize=1024;
